@@ -240,8 +240,8 @@ _XLSX_CELL_RE = re.compile(
 _XLSX_INLINE_TEXT_RE = re.compile(r"<is>\s*<t[^>]*>(?P<text>.*?)</t>\s*</is>", re.DOTALL)
 
 
-def _parse_xlsx_rows(blob):
-    """-> list[dict] keyed by COLUMN LETTER ("B", "C", ...). Pure.
+def _parse_xlsx_sheet(blob):
+    """-> (header_map, rows). Pure.
 
     Reads xl/worksheets/sheet1.xml out of the .xlsx zip by hand: stdlib zipfile + a
     regex cell scan rather than a full ET parse of the (huge) worksheet, because the
@@ -251,15 +251,18 @@ def _parse_xlsx_rows(blob):
     a shared-strings lookup would return every cell blank. Columns start at B and
     trailing empty cells are OMITTED from a row entirely, so cells are mapped by the
     column letter parsed out of each <c>'s own r="B23" attribute — never positionally.
-    The header row (row 1) is skipped; callers only see data rows.
+
+    `header_map` maps the row-1 header TEXT (stripped) to its column letter — this is
+    what makes column resolution survive Lidl shipping two files with completely
+    different schemas under the same file format (see parse_lidl). `rows` is every
+    data row (row 2+), still keyed by column letter — some callers only need that.
     """
     rows = []
+    header_map = {}
     with zipfile.ZipFile(BytesIO(blob)) as zf:
         sheet_xml = zf.read("xl/worksheets/sheet1.xml").decode("utf-8")
 
     for row_idx, row_match in enumerate(_XLSX_ROW_RE.finditer(sheet_xml)):
-        if row_idx == 0:
-            continue  # header row
         row_xml = row_match.group(0)
         row = {}
         for cell_match in _XLSX_CELL_RE.finditer(row_xml):
@@ -267,35 +270,93 @@ def _parse_xlsx_rows(blob):
             body = cell_match.group("body") or ""
             text_match = _XLSX_INLINE_TEXT_RE.search(body)
             row[col] = html.unescape(text_match.group("text")) if text_match else ""
-        rows.append(row)
+        if row_idx == 0:
+            header_map = {text.strip(): col for col, text in row.items() if text.strip()}
+        else:
+            rows.append(row)
 
-    return rows
+    return header_map, rows
+
+
+def _parse_xlsx_rows(blob):
+    """-> list[dict] keyed by COLUMN LETTER ("B", "C", ...). Pure.
+
+    Thin wrapper over `_parse_xlsx_sheet` for callers that only need the column-
+    letter-keyed data rows (e.g. the omitted-trailing-cell guard). The header row is
+    excluded here too.
+    """
+    return _parse_xlsx_sheet(blob)[1]
+
+
+def _resolve_lidl_col(header_map, *names):
+    """First matching header NAME's column letter, or raise. Exact match only —
+    "Цена" must never substring-match "Цена в промоция" or "Референтната цена / цена
+    на дребно", or this reintroduces the exact bug this function exists to prevent,
+    just from the other direction (a loose match instead of a hard-coded letter)."""
+    for name in names:
+        if name in header_map:
+            return header_map[name]
+    raise ValueError(
+        f"Lidl export is missing an expected column (tried {list(names)!r}); "
+        f"header row had: {sorted(header_map)!r}"
+    )
 
 
 def parse_lidl(blob):
     """-> (promo_offers, regular_rows). Pure.
 
-    promo_offers: one canonical offer per row with a non-empty "Цена в промоция",
-    de-duped across stores by product code keeping the LOWEST promo price.
-    regular_rows: one per distinct product code, the LOWEST "Цена" (ordinary shelf
-    price) observed — never an offer, never mixed with the promo series.
-    """
-    rows = _parse_xlsx_rows(blob)
-    if C.LIDL_STORE_FILTER:
-        rows = [r for r in rows if C.LIDL_STORE_FILTER in r.get("C", "")]
+    Lidl ships its two export files under COMPLETELY DIFFERENT schemas — same file
+    format, different column meanings entirely (e.g. the first file's column E is
+    "Код на продукта"/product code, the second's column E is "Марка"/brand, almost
+    always empty). Columns are therefore resolved by HEADER NAME via `header_map`,
+    never by a hard-coded letter — a hard-coded map silently reads one file's
+    category-number column as the other file's promo price. If a required column
+    name is absent, this raises (never falls back to a guessed letter); `fetch_lidl`
+    turns that into a per-URL failure note instead of silently injecting garbage into
+    the promo/regular series.
 
-    best_promo = {}  # product_code -> (promo_price, row)
+    promo_offers: one canonical offer per row with a non-empty promo price,
+    de-duped across stores by product code keeping the LOWEST promo price.
+    regular_rows: one per distinct product code, the LOWEST regular/shelf price
+    observed — never an offer, never mixed with the promo series.
+    """
+    header_map, rows = _parse_xlsx_sheet(blob)
+
+    col_store = _resolve_lidl_col(header_map, "Търговски обект", "Данни за търговския обект")
+    col_name = _resolve_lidl_col(header_map, "Наименование на продукта", "Име на продукта")
+    col_code = _resolve_lidl_col(header_map, "Код на продукта")
+    col_category = _resolve_lidl_col(header_map, "Категория")
+    col_regular = _resolve_lidl_col(header_map, "Цена", "Референтната цена / цена на дребно")
+    col_promo = _resolve_lidl_col(header_map, "Цена в промоция", "Текущата намалена цена")
+    # Only the second file's schema carries a real promo validity date; the first
+    # file's schema has no such column at all, so this stays None for its rows.
+    col_valid_until = header_map.get("Срок на намаление до")
+
+    if C.LIDL_STORE_FILTER:
+        rows = [r for r in rows if C.LIDL_STORE_FILTER in r.get(col_store, "")]
+
+    best_promo = {}  # product_code -> (promo_price, name, category, regular_price, valid_until)
     best_regular = {}  # product_code -> (regular_price, name, category)
 
     for row in rows:
-        code = row.get("E", "").strip()
+        code = row.get(col_code, "").strip()
         if not code:
             continue
-        name = row.get("D", "").strip()
-        category = row.get("F", "").strip() or None
-        regular_text = row.get("G", "").strip()
-        promo_text = row.get("H", "").strip()
+        name = row.get(col_name, "").strip()
+        category = row.get(col_category, "").strip() or None
+        regular_text = row.get(col_regular, "").strip()
+        promo_text = row.get(col_promo, "").strip()
 
+        valid_until = None
+        if col_valid_until:
+            raw_date = row.get(col_valid_until, "").strip()
+            if raw_date:
+                valid_until = match.parse_valid_until(raw_date)
+
+        # Never use the source's own "Процентното изменение между двете цени" column
+        # (M in the second schema) — Python computes claimed_discount itself; a
+        # source's own arithmetic is never trusted (CONTRACT: the LLM never performs
+        # arithmetic, and neither does a feed).
         regular_price = match.parse_eur(regular_text + " €") if regular_text else None
         if regular_price is not None:
             prev = best_regular.get(code)
@@ -307,10 +368,10 @@ def parse_lidl(blob):
             if promo_price is not None:
                 prev = best_promo.get(code)
                 if prev is None or promo_price < prev[0]:
-                    best_promo[code] = (promo_price, name, category, regular_price)
+                    best_promo[code] = (promo_price, name, category, regular_price, valid_until)
 
     promo_offers = []
-    for code, (promo_price, name, category, was_price) in best_promo.items():
+    for code, (promo_price, name, category, was_price, valid_until) in best_promo.items():
         # `raw` is a STRING for every source — it reaches prose contexts (the audit
         # leads block, run.md, html.escape) where a dict would raise. The product code
         # is what de-duping keys on, so it gets its own field rather than riding inside
@@ -322,7 +383,7 @@ def parse_lidl(blob):
         offer["price_eur"] = promo_price
         offer["was_price_eur"] = was_price
         offer["claimed_discount"] = _claimed_discount(promo_price, was_price)
-        offer["valid_until"] = None  # this export carries no validity date
+        offer["valid_until"] = valid_until
         offer["url"] = ""
         offer["heat"] = None
         offer["category_hint"] = None

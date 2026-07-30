@@ -275,7 +275,8 @@ bad_offers = [o for o in lidl_promo if not LIDL_CONTRACT_KEYS.issubset(o.keys())
 chk("lidl promo offers all carry the 11 contract keys", bad_offers == [], len(bad_offers))
 chk("lidl promo offers all source=='lidl'", all(o["source"] == "lidl" for o in lidl_promo))
 chk("lidl promo offers all retailer=='Lidl'", all(o["retailer"] == "Lidl" for o in lidl_promo))
-chk("lidl promo offers all valid_until is None — export carries no validity date",
+chk("lidl promo offers (first-file schema) all valid_until is None — "
+    "that schema carries no validity-date column",
     all(o["valid_until"] is None for o in lidl_promo))
 
 # No regular row is an offer shape, and no promo price ever appears in regular_rows —
@@ -427,6 +428,205 @@ if dedupe_promo:
         dedupe_promo[0]["price_eur"] == 1.99, dedupe_promo[0]["price_eur"])
 
 
+# ── SECOND Lidl schema — columns resolved by HEADER NAME, not hard-coded letter ──
+# ExportSecondList.xlsx uses a COMPLETELY different 12-column layout (B-M) for the
+# same underlying data. Under a hard-coded B-H letter map this silently read the
+# category NUMBER as a price and the product code as a EUR amount (the live bug this
+# whole section guards against). Column letters here: B=EKATTE C=store D=name
+# E=Марка(brand) F=Нетно количество G=Категория H=Код на продукта
+# I=Референтна цена J=Текущата намалена цена K=от L=до M=Процентно изменение.
+
+LIDL_FIXTURE_SECOND = open("fixtures/lidl_plovdiv_second.xlsx", "rb").read()
+lidl2_promo, lidl2_regular = sources.parse_lidl(LIDL_FIXTURE_SECOND)
+
+chk("parse_lidl (second schema) yields 26 promo offers", len(lidl2_promo) == 26, len(lidl2_promo))
+chk("parse_lidl (second schema) yields 218 distinct regular products",
+    len(lidl2_regular) == 218, len(lidl2_regular))
+
+# A known real row from the live second file: Zahira Захар, code 0001229,
+# regular(I) 1.12 -> promo(J) 0.95, valid until (L) 2026-08-02.
+lidl2_by_code = {o["product_code"]: o for o in lidl2_promo}
+zahira = lidl2_by_code.get("0001229")
+chk("second schema: Zahira Захар found by the RIGHT product code (H, not E/Марка)",
+    zahira is not None, lidl2_by_code.keys())
+if zahira is not None:
+    chk("second schema: Zahira name read from D (Име на продукта)",
+        zahira["name"] == "Zahira Захар", zahira["name"])
+    chk("second schema: Zahira promo price read from J, not H (product code column)",
+        zahira["price_eur"] == 0.95, zahira["price_eur"])
+    chk("second schema: Zahira regular price read from I, not G (category column)",
+        zahira["was_price_eur"] == 1.12, zahira["was_price_eur"])
+    chk("second schema: Zahira valid_until parsed from L (Срок на намаление до)",
+        zahira["valid_until"] == "2026-08-02", zahira["valid_until"])
+
+# ── THE REGRESSION ITSELF: no price is actually a product code or category number ──
+# The live bug read column E (Марка, usually empty) as the product code, column G
+# (Категория, a small integer like "38") as the regular price, and column H (Код на
+# продукта, e.g. "0001229") as the promo price — turning a product code into a
+# EUR 1229 promo. Guard directly: every price must be a plausible grocery amount,
+# and no product code (7 digits, mostly zero-padded) may appear as a price.
+ALL_LIDL2_CODES = {o["product_code"] for o in lidl2_promo} | {r["product_code"] for r in lidl2_regular}
+for o in lidl2_promo:
+    chk(f"second schema: {o['product_code']} price_eur is a plausible grocery price (< 100 EUR)",
+        0 < o["price_eur"] < 100, o["price_eur"])
+    chk(f"second schema: {o['product_code']} was_price_eur is a plausible grocery price (< 100 EUR)",
+        o["was_price_eur"] is None or 0 < o["was_price_eur"] < 100, o["was_price_eur"])
+    price_str = str(o["price_eur"])
+    chk(f"second schema: {o['product_code']}'s promo price is not its own product code",
+        price_str not in ALL_LIDL2_CODES, (o["product_code"], o["price_eur"]))
+
+# ── independent arithmetic cross-check against the retailer's OWN M column ──
+# We never USE column M (Процентното изменение) to compute anything — Python computes
+# claimed_discount itself. But as an independent proof that we picked the right two
+# price columns (not merely two self-consistent wrong ones), the retailer's own
+# percentage-change figure should agree with our computed discount to within rounding.
+import re as _re
+import zipfile as _zipfile
+
+_z2 = _zipfile.ZipFile("fixtures/lidl_plovdiv_second.xlsx")
+_sheet2 = _z2.read("xl/worksheets/sheet1.xml").decode("utf-8")
+_rows2 = _re.findall(r'<row r="\d+">.*?</row>', _sheet2, _re.DOTALL)
+
+
+def _cellval(r, col):
+    m = _re.search(r'<c r="' + col + r'\d+"[^>]*>(?:<is><t>(.*?)</t></is>)?</c>', r)
+    return (m.group(1) or "") if m else ""
+
+
+_m_by_code = {}
+for _r in _rows2[1:]:
+    _code = _cellval(_r, "H")
+    _m = _cellval(_r, "M")
+    if _m:
+        _m_by_code[_code] = float(_m)
+
+cross_check_count = 0
+for o in lidl2_promo:
+    retailer_pct = _m_by_code.get(o["product_code"])
+    if retailer_pct is not None:
+        cross_check_count += 1
+        our_pct = o["claimed_discount"] * 100
+        chk(f"second schema: our claimed_discount matches retailer's M column for "
+            f"{o['product_code']} (ours={our_pct:.2f}%, theirs={retailer_pct}%)",
+            abs(our_pct - retailer_pct) < 0.1, (our_pct, retailer_pct))
+chk("cross-checked at least the 26 promo rows against column M",
+    cross_check_count >= 26, cross_check_count)
+
+# ── valid_until: real ISO dates for second-file rows, None for first-file rows ──
+chk("second-file promo offers mostly carry a real ISO valid_until date",
+    sum(1 for o in lidl2_promo if o["valid_until"] is not None) >= 20,
+    sum(1 for o in lidl2_promo if o["valid_until"] is not None))
+_ISO_DATE = __import__("re").compile(r"^\d{4}-\d{2}-\d{2}$")
+bad_dates = [o["valid_until"] for o in lidl2_promo
+             if o["valid_until"] is not None and not _ISO_DATE.match(o["valid_until"])]
+chk("second-file valid_until values that are present are well-formed ISO dates",
+    bad_dates == [], bad_dates)
+chk("first-file promo offers still have valid_until is None (unchanged)",
+    all(o["valid_until"] is None for o in lidl_promo))
+
+
+# ── a blob whose header lacks a required column fails LOUDLY, not silently ──
+MISSING_COL_HEADER = (
+    '<row r="1">'
+    '<c r="B1" t="inlineStr"><is><t>Код</t></is></c>'
+    '<c r="C1" t="inlineStr"><is><t>Търговски обект</t></is></c>'
+    '<c r="D1" t="inlineStr"><is><t>Наименование на продукта</t></is></c>'
+    '<c r="E1" t="inlineStr"><is><t>Код на продукта</t></is></c>'
+    '<c r="F1" t="inlineStr"><is><t>Категория</t></is></c>'
+    '<c r="G1" t="inlineStr"><is><t>Цена</t></is></c>'
+    # H (a promo-price column, under EITHER spelling) is missing entirely.
+    "</row>"
+)
+MISSING_COL_ROW = (
+    '<row r="2">'
+    '<c r="B2" t="inlineStr"><is><t>1</t></is></c>'
+    '<c r="C2" t="inlineStr"><is><t>1 - Пловдив/х</t></is></c>'
+    '<c r="D2" t="inlineStr"><is><t>Продукт</t></is></c>'
+    '<c r="E2" t="inlineStr"><is><t>КОД1</t></is></c>'
+    '<c r="F2" t="inlineStr"><is><t>1</t></is></c>'
+    '<c r="G2" t="inlineStr"><is><t>1.00</t></is></c>'
+    "</row>"
+)
+def _build_xlsx_raw(header_row, data_rows):
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheetData>" + header_row + "".join(data_rows) + "</sheetData></worksheet>"
+    )
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "xl/sharedStrings.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<sst count="0" uniqueCount="0" '
+            'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>',
+        )
+        z.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    return buf.getvalue()
+
+
+missing_col_blob = _build_xlsx_raw(MISSING_COL_HEADER, [MISSING_COL_ROW])
+
+try:
+    sources.parse_lidl(missing_col_blob)
+    missing_col_raised = False
+    missing_col_error = None
+except ValueError as e:
+    missing_col_raised = True
+    missing_col_error = str(e)
+except Exception as e:
+    missing_col_raised = "unexpected: " + type(e).__name__
+    missing_col_error = str(e)
+
+chk("parse_lidl raises (loudly) when a required column name is missing",
+    missing_col_raised is True, missing_col_raised)
+chk("the raised error names the missing column search",
+    missing_col_error is not None and "Цена в промоция" in missing_col_error, missing_col_error)
+
+# fetch_lidl must convert that raise into a per-URL failure note, not propagate it —
+# and the OTHER URL's real data must still come through.
+
+
+def _lidl_one_bad_schema(url, timeout=180):
+    if url == C.LIDL_EXPORT_URLS[0]:
+        return missing_col_blob
+    return LIDL_FIXTURE_SECOND
+
+
+sources._fetch_bytes = _lidl_one_bad_schema
+lp_bad, lr_bad, lreport_bad = sources.fetch_lidl()
+chk("fetch_lidl: a bad-schema URL degrades to a note, good URL's data still returned",
+    len(lp_bad) == 26, len(lp_bad))
+chk("fetch_lidl: bad-schema failure recorded in the note",
+    "Цена в промоция" in lreport_bad["note"] or "missing" in lreport_bad["note"].lower(),
+    lreport_bad["note"])
+chk("fetch_lidl: bad-schema URL failing alongside a good one -> ok stays True",
+    lreport_bad["ok"] is True, lreport_bad)
+sources._fetch_bytes = _orig_fetch_bytes
+
+
+# ── both fixtures merged together behave sanely (no cross-file code collisions) ──
+def _lidl_both_files(url, timeout=180):
+    if url == C.LIDL_EXPORT_URLS[0]:
+        return LIDL_FIXTURE
+    return LIDL_FIXTURE_SECOND
+
+
+sources._fetch_bytes = _lidl_both_files
+lp_merged, lr_merged, lreport_merged = sources.fetch_lidl()
+chk("fetch_lidl merging both real schemas: still exactly 26 promo offers "
+    "(same underlying products, no cross-file duplication)",
+    len(lp_merged) == 26, len(lp_merged))
+chk("fetch_lidl merging both real schemas: regular_rows is the union of both files' "
+    "distinct product codes (361), not a collision-corrupted count",
+    len(lr_merged) == 361, len(lr_merged))
+chk("fetch_lidl merging both real schemas: no merged price is absurd (all < 100 EUR)",
+    all(0 < o["price_eur"] < 100 for o in lp_merged), [o["price_eur"] for o in lp_merged if not (0 < o["price_eur"] < 100)])
+chk("fetch_lidl merging both real schemas: report n reflects the true union (361)",
+    lreport_merged["n"] == 361, lreport_merged)
+sources._fetch_bytes = _orig_fetch_bytes
+
+
 # ── _fetch_bytes monkeypatched to raise -> fetch_lidl returns ([], [], ok=False) ──
 
 def _lidl_raiser(url, timeout=180):
@@ -494,6 +694,27 @@ chk("harvest with healthy lidl: lidl offers annotated (carry sku_class key)",
 sources_src = open("sources.py", encoding="utf-8").read()
 chk('"broshura" does not appear in sources.py', "broshura" not in sources_src)
 
+
+# ── _resolve_lidl_col: exact matching, directly ──────────────────────────────
+# The two real files happen to survive substring matching only because "Цена" is
+# capitalised while the second file's "...цена на дребно" is not. That is luck, not a
+# guarantee, so the property is pinned here on synthetic header maps instead: asking
+# for the REGULAR price column in a header that carries only a PROMO column must
+# RAISE, not quietly hand back the promo column. Silently reading the promo price as
+# the regular price fabricates a 0% discount on every row.
+_promo_only_header = {"Код на продукта": "B", "Категория": "C", "Цена в промоция": "D"}
+try:
+    got = sources._resolve_lidl_col(_promo_only_header, "Цена")
+    chk("_resolve_lidl_col refuses a substring match for the regular-price column",
+        False, f"returned column {got!r} (the PROMO column) instead of raising")
+except ValueError:
+    chk("_resolve_lidl_col refuses a substring match for the regular-price column", True)
+
+_both_header = {"Цена": "G", "Цена в промоция": "H"}
+chk("_resolve_lidl_col picks the exact regular column when both are present",
+    sources._resolve_lidl_col(_both_header, "Цена") == "G")
+chk("_resolve_lidl_col picks the exact promo column when both are present",
+    sources._resolve_lidl_col(_both_header, "Цена в промоция", "Текущата намалена цена") == "H")
 
 if _fails:
     print(f"\n{len(_fails)} failure(s): {_fails}")
