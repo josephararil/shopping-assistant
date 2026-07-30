@@ -1,0 +1,12 @@
+name = "shopping-assistant"
+compatibility_date = "2024-09-23"
+
+# Runs automatically before `wrangler deploy`/`versions upload` (both locally and in
+# Cloudflare's dashboard Git integration), producing dist/ even if the dashboard's own
+# "Build command" is left unset — that gap is what caused the "assets.directory does not
+# exist" deploy failure.
+[build]
+command = "npm run build"
+
+[assets]
+directory = "./dist"
