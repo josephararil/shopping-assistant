@@ -152,11 +152,53 @@ _UNIT_ALT = "|".join(re.escape(k) for k in
                       sorted(catalog.UNIT_ALIASES, key=len, reverse=True))
 _QTY_RE = re.compile(r'\b(?:(\d+)\s*[xх]\s*)?(\d+(?:[.,]\d+)?)\s*(' + _UNIT_ALT + r')\b')
 
+# A money figure may carry BOTH a thousands separator and a decimal separator, in either
+# convention: German/Bulgarian "1.393,28" or English "1,393.28", with a plain or
+# non-breaking space also used for thousands ("1 393,28"). The number body is captured
+# whole and disambiguated by _to_amount below.
+_NUM = r'\d{1,3}(?:[.,   ]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,3})?'
 _EUR_RE = re.compile(
-    r'(?:(\d+(?:[.,]\d+)?)\s*€|€\s*(\d+(?:[.,]\d+)?)'
-    r'|(\d+(?:[.,]\d+)?)\s*eur\b|\beur\s*(\d+(?:[.,]\d+)?))',
+    rf'(?:({_NUM})\s*€|€\s*({_NUM})|({_NUM})\s*eur\b|\beur\s*({_NUM}))',
     re.IGNORECASE,
 )
+
+
+def _to_amount(raw):
+    """Turn a captured money body into a float, resolving separator ambiguity.
+
+    This exists because the naive version silently understated prices by up to 1000x,
+    which is the worst possible failure in this pipeline: a EUR 2499 television read as
+    EUR 2.499 is below every trigger_eur in the catalog, so it becomes an instant false
+    Strong Buy. One parser slip is amplified by every gate downstream.
+
+    Rules, in order:
+      - both '.' and ',' present  -> the LAST one is the decimal separator
+      - one separator, exactly 3 digits after it -> thousands separator. Retail prices do
+        not have three decimal places, so "2.499" is 2499 and "1,234" is 1234.
+      - one separator, 1-2 digits after it -> decimal separator
+      - spaces and non-breaking spaces are always thousands separators
+
+    >>> _to_amount("1.393,28")
+    1393.28
+    >>> _to_amount("2.499")
+    2499.0
+    >>> _to_amount("104,42")
+    104.42
+    """
+    s = raw.strip().replace(" ", "").replace(" ", "").replace(" ", "")
+    last_dot, last_comma = s.rfind("."), s.rfind(",")
+    if last_dot != -1 and last_comma != -1:
+        dec = "." if last_dot > last_comma else ","
+        thou = "," if dec == "." else "."
+        s = s.replace(thou, "").replace(dec, ".")
+    elif last_dot != -1 or last_comma != -1:
+        sep = "." if last_dot != -1 else ","
+        tail = s.split(sep)[-1]
+        s = s.replace(sep, "") if len(tail) == 3 else s.replace(sep, ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
 
 _ISO_DATE_RE = re.compile(r'\b(\d{4})-(\d{2})-(\d{2})\b')
 _DMY_DATE_RE = re.compile(r'\b(\d{1,2})[./](\d{1,2})[./](\d{4})\b')
@@ -187,13 +229,25 @@ def parse_eur(text):
 
     No BGN parsing branch exists anywhere in this function, by design (see CONTRACT
     §9): a лв./BGN amount simply never matches _EUR_RE, so a string carrying both
-    (broshura's "12,90 € / 25,23 лв.") returns the EUR figure regardless of order.
+    ("12,90 € / 25,23 лв.") returns the EUR figure regardless of order.
+
+    Thousands separators are handled by _to_amount. They must be: an unhandled
+    "1.393,28" parses as 393.28 and an unhandled "2.499" as 2.499, understating a price
+    by up to 1000x and turning any expensive durable into an instant false Strong Buy.
+
+    >>> parse_eur("1.393,28€")
+    1393.28
+    >>> parse_eur("2.499€")
+    2499.0
+    >>> parse_eur("104,42€")
+    104.42
+    >>> parse_eur("6,84 лв.") is None
+    True
     """
     m = _EUR_RE.search(text or "")
     if not m:
         return None
-    amount = next(g for g in m.groups() if g is not None)
-    return float(amount.replace(",", "."))
+    return _to_amount(next(g for g in m.groups() if g is not None))
 
 
 def parse_valid_until(text):

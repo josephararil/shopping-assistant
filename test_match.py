@@ -148,5 +148,30 @@ chk("veto is NOT substring-anywhere: 'ear' must not veto via 'year'",
 chk("veto still fires as a whole word: 'калъф' vetoes the case",
     _m("Калъф за Sony WH-1000XM5") != "av.sony_xm5")
 
+
+# ── parse_eur thousands separators ───────────────────────────────────────────
+# A naive parse_eur understated prices by up to 1000x: "1.393,28" came back as 393.28
+# and "2.499" as 2.499. That is the worst failure available in this pipeline — a €2499
+# television read as €2.499 sits below every trigger_eur in the catalog, so it becomes an
+# instant false Strong Buy and no downstream gate can stop it. Found in the real mydealz
+# feed (LG gram laptop at 1.393,28 €).
+for _txt, _want in [
+    ("1.393,28€", 1393.28),        # German: dot thousands, comma decimal
+    ("2.499€", 2499.0),            # dot + exactly 3 digits = thousands, not 3 decimals
+    ("1 393,28 €", 1393.28),       # space thousands
+    ("EUR 1.049,99", 1049.99),
+    ("€1.234.567,89", 1234567.89),  # several thousands groups
+    ("1,393.28€", 1393.28),        # English convention: the LAST separator is the decimal
+    ("104,42€", 104.42),           # plain comma decimal still works
+    ("60,46€", 60.46),
+]:
+    chk(f"parse_eur({_txt!r}) == {_want}", match.parse_eur(_txt) == _want,
+        f"got {match.parse_eur(_txt)!r}")
+
+chk("parse_eur still returns None for a BGN-only amount",
+    match.parse_eur("6,84 лв.") is None, f"got {match.parse_eur('6,84 лв.')!r}")
+chk("parse_eur picks EUR when both currencies are present",
+    match.parse_eur("12,90 € / 25,23 лв.") == 12.90)
+
 print(f"\n{len(_fails)} failure(s): {_fails}" if _fails else "\nAll match tests passed.")
 sys.exit(1 if _fails else 0)
