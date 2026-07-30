@@ -93,14 +93,27 @@ MAX_CORROBORATE_PER_RUN = 6      # Stage 5 is the only stage that scales with se
 WEB_SEARCH_MAX_USES = 6
 
 # ── Cost governor (Stage 2 prefilter) ────────────────────────────────────────
-# broshura.bg/oferti yields ~1552 offers. Feeding that to an LLM weekly is
-# unaffordable and unfocused. These caps are what make cost independent of how
-# many offers the sources happen to return.
+# These caps make LLM cost independent of how many offers the sources return: a feed
+# could triple overnight and the bill would not move.
+#
+# WHY THERE IS NO `broshura` SOURCE — do not re-add one without re-verifying first.
+# The plan specified broshura.bg/oferti as ~1552 product-level offers carrying name +
+# EUR + BGN + retailer + "Важи до". That does not reproduce. Measured 2026-07-30:
+# a plain GET of /oferti returns 218 KB containing FIVE EUR amounts in total, and
+# /xhr/popularGridOffers, /oferti?page=2 and /hranitelni-stoki all return the same SPA
+# shell. Rendered in a real browser with JS executed, the page shows brochure tiles
+# (title + validity date, NO prices) plus an "Избрани продукти" widget of ~12-27
+# FURNITURE items with EUR/BGN but no retailer and no validity date. The browser's own
+# network trace shows only /xhr/geo, /xhr/tracking and /xhr/onsiteNotifications — there
+# is no offer-data endpoint to call. What the site really serves is the scanned-image
+# brochure listing the plan itself ruled out as OCR-only and out of scope.
+#
+# Consequence: consumables have no deterministic source, so Stage 3 DISCOVER is now
+# their PRIMARY source rather than a gap-filler, and its cap carries most of the budget.
 SOURCE_CAPS = {
-    "broshura":     40,
     "ccc":           8,
     "mydealz":       8,
-    "llm_discover": 12,
+    "llm_discover": 30,
 }
 
 # A matched consumable whose unit price is plainly not a deal costs ZERO LLM tokens:
@@ -124,12 +137,24 @@ DISCOVERY_MIN_PRICE_EUR        = 60
 HEAT_ORDER_DIVISOR = 300.0   # heat/300, capped at +0.5 on the ordering multiplier
 HEAT_ORDER_MAX     = 0.5
 
-# Stage 3 gap-filling: watchlist/wishlist skus with zero matches this run.
-MAX_GAP_QUERIES = 12
+# Stage 3: skus with zero matches from the deterministic feeds this run. With no leaflet
+# source, that is effectively the WHOLE consumable watchlist every week, so this is sized
+# to cover it rather than to sample it. Partial coverage is expected and correct — the
+# prompt tells the model to OMIT an item it cannot price honestly, and catalog_health
+# surfaces any sku that stays unmatched for CATALOG_STALE_RUNS runs.
+MAX_GAP_QUERIES = 40
 
 # Warn when a parse "succeeds" but returns implausibly little — the failure mode where
 # a layout change silently drops 99% of offers and the week just looks quiet.
-MIN_EXPECTED_OFFERS = {"broshura": 300, "ccc": 20, "mydealz": 10}
+# ccc is set at 15 rather than 20 because the live feed carries exactly 20 items, so a
+# threshold of 20 would fire on a single malformed title.
+MIN_EXPECTED_OFFERS = {"ccc": 15, "mydealz": 10}
+
+# `regular` observations may come ONLY from these sources. Every harvest source is a
+# PROMOTIONS feed, so a price from any of them is a promo price by construction — a par
+# blended from them walks downhill weekly until the digest goes silently empty, which is
+# failure mode #1 and it fails invisibly. Only Stage-5 comparator listings qualify.
+REGULAR_ALLOWED_SOURCES = {"corroborate"}
 
 # ── The evidence model ──────────────────────────────────────────────────────
 # ref_evidence scores REFERENCE credibility, NEVER offer credibility. Offer
@@ -531,11 +556,13 @@ DISCOVER_PROMPT = """Today is {today}. You are a sharp Bulgarian retail scout ru
 
 ### WHAT TO FIND
 
-1. **These specific items we could not find in this week's leaflets** (highest priority — each one is a gap in our coverage):
+1. **This is the household's shopping list. Finding this week's real price for these items IS your job** — not a side task. For each one, find the best current price at any Bulgarian retailer (Kaufland, Lidl, Billa, Metro, Fantastico, T MARKET) or a reputable online shop delivering to Bulgaria. Work through as many as you can:
 {gap_skus}
 
-2. **Always check these two, every week:**
+2. **Always check these, every week:**
 {always_check}
+
+Cover breadth over depth: one honest price for each of twenty items is worth far more to us than four sources for one item. If you cannot find a real current price for an item, skip it and move on — we track which items keep coming back empty and fix our own search terms.
 
 ### WHAT MAKES A USABLE LEAD
 - A NAMED product with a CONCRETE price in EUR and a NAMED retailer. "Metro has good meat prices" is useless; "Metro Bulgaria, Norwegian salmon fillet, 12.90 EUR/kg, valid to 12 Aug" is a lead.

@@ -43,19 +43,30 @@ def run():
     for _ in range(10):
         history.record_promo(hist, _promo_cand(SKU, 8.0))
     for _ in range(4):
-        history.record_regular(hist, SKU, 14.0, source="ccc")
+        history.record_regular(hist, SKU, 14.0, source="corroborate")
     reg = history.stats_for(hist, SKU)["regular"]
     chk("headline: promo never moves regular median", reg["median"] == 14,
         f"got {reg['median']}")
     promo = history.stats_for(hist, SKU)["promo"]
     chk("headline: promo series unaffected by regular writes", promo["n"] == 10 and promo["median"] == 8.0)
 
-    # ── record_regular refuses a broshura source ──
-    hist2 = history.load()
-    ok = history.record_regular(hist2, SKU, 10.0, source="broshura")
-    entry2 = hist2.get("skus", {}).get(SKU, {})
-    chk("record_regular refuses broshura source", ok is False)
-    chk("record_regular: regular stays empty after refusal", entry2.get("regular", []) == [])
+    # ── record_regular is an ALLOWLIST, not a denylist ──
+    # Every harvest source is a promotions feed, so each must be refused. A denylist
+    # would grant any newly-added source `regular` access by default and erode the par
+    # silently — assert refusal for EVERY source the pipeline can actually produce, and
+    # acceptance only for the Stage-5 corroborator.
+    for bad_source in ("broshura", "ccc", "mydealz", "llm_discover", "", "unknown_feed"):
+        hist2 = history.load()
+        ok = history.record_regular(hist2, SKU, 10.0, source=bad_source)
+        entry2 = hist2.get("skus", {}).get(SKU, {})
+        chk(f"record_regular refuses source={bad_source!r}",
+            ok is False and entry2.get("regular", []) == [])
+
+    for good_source in sorted(C.REGULAR_ALLOWED_SOURCES):
+        hist2b = history.load()
+        okg = history.record_regular(hist2b, SKU, 10.0, source=good_source)
+        chk(f"record_regular ACCEPTS source={good_source!r}",
+            okg is not False and len(hist2b["skus"][SKU]["regular"]) == 1)
 
     # ── record_promo refuses a quarantined candidate ──
     hist3 = history.load()
@@ -107,14 +118,14 @@ def run():
     hist5 = history.load()
     base5 = dt.date(2026, 1, 1)
     for i in range(3):
-        history.record_regular(hist5, SKU, 14.0, source="ccc")
+        history.record_regular(hist5, SKU, 14.0, source="corroborate")
         hist5["skus"][SKU]["regular"][-1]["d"] = (base5 + dt.timedelta(days=i * 10)).isoformat()
     hist5["skus"][SKU]["stats"]["regular"] = history._regular_stats(hist5["skus"][SKU]["regular"])
     r3 = history.stats_for(hist5, SKU)["regular"]
     usable3 = r3["n"] >= C.REGULAR_MIN_N and r3["span_days"] >= C.REGULAR_MIN_SPAN_DAYS
     chk("regular_median: n=3 gives no usable median", usable3 is False, r3)
 
-    history.record_regular(hist5, SKU, 14.0, source="ccc")
+    history.record_regular(hist5, SKU, 14.0, source="corroborate")
     hist5["skus"][SKU]["regular"][-1]["d"] = (base5 + dt.timedelta(days=30)).isoformat()
     hist5["skus"][SKU]["stats"]["regular"] = history._regular_stats(hist5["skus"][SKU]["regular"])
     r4 = history.stats_for(hist5, SKU)["regular"]

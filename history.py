@@ -143,12 +143,18 @@ def record_promo(hist, cand):
 def record_regular(hist, sku, unit_price_eur, source, note=""):
     """Append a genuine non-promo (Stage-5 comparator) price observation.
 
-    Refuses (returns False, prints a warning) a leaflet ("broshura") source. Every
-    source feeding this pipeline is a promotions feed; letting a leaflet price into
-    `regular` would blend a promo into the one series that is allowed to move a par."""
-    if source == "broshura":
-        print(f"history.record_regular: refused broshura source for sku={sku!r} "
-              f"— leaflet prices are promos, never regular evidence")
+    Accepts ONLY the sources in C.REGULAR_ALLOWED_SOURCES, and refuses everything else
+    (returns False, prints a warning).
+
+    This is an ALLOWLIST, deliberately, and it must stay one. It began life as a denylist
+    of the single string "broshura", which is exactly backwards: a denylist grants every
+    NEW source `regular` access by default. That bit as soon as broshura turned out not
+    to exist and `llm_discover` became the primary consumable source — llm_discover is a
+    promotions feed too, so a denylist would have quietly admitted promo prices into the
+    one series allowed to move a par, which is failure mode #1 and it fails invisibly."""
+    if source not in C.REGULAR_ALLOWED_SOURCES:
+        print(f"history.record_regular: refused source={source!r} for sku={sku!r} — only "
+              f"{sorted(C.REGULAR_ALLOWED_SOURCES)} may inform a par; everything else is a promo")
         return False
 
     entry = _sku_entry(hist, sku)
