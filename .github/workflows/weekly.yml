@@ -1,0 +1,106 @@
+name: weekly
+
+# Weekly Bulgarian shopping-deal hunt. Harvests retail leaflets and price-drop feeds,
+# cuts them to <=sum(SOURCE_CAPS) candidates deterministically, then spends three LLM
+# calls: discover (search) -> audit (batched, no search) -> corroborate (search, gated).
+# Emails only when at least one Strong Buy or Fair survives; otherwise writes state
+# and exits quietly.
+#
+# The commit-back step is load-bearing, not housekeeping: state/price_history.json is
+# the pipeline's substitute for a paid price-history API. It is worthless in week 1 and
+# decisive by week 12, and it only accumulates because CI commits it back every run.
+#
+# Two jobs: `tests` runs the offline suites and gates everything; `run` executes the
+# pipeline and is SKIPPED on pull_request, so a PR gets the test gate without spending
+# LLM tokens, sending an email, or committing state.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every stage and write state, but send no email and do not mark_seen"
+        type: boolean
+        default: false
+
+# Read-only by default; only the `run` job elevates to write, and only it needs to.
+permissions:
+  contents: read
+
+concurrency:
+  # Ref-scoped so a PR's test run never serialises behind the weekly pipeline. Two runs
+  # on main still share a group, and cancel-in-progress stays false: a run must never be
+  # killed part-way through writing state.
+  group: shop-hunter-weekly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # The offline suites gate everything downstream. A parser broken by a site layout change
+  # is caught here, against committed fixtures, instead of silently harvesting nothing and
+  # producing a digest that merely looks like a quiet week. All six run in under a second,
+  # need no secrets, and touch no network — so they are also the whole PR gate.
+  tests:
+    name: offline suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - name: Offline test suites
+        run: |
+          python test_match.py
+          python test_sources.py
+          python test_prefilter.py
+          python test_history.py
+          python test_verdicts.py
+          python test_stub.py
+
+  run:
+    needs: tests
+    # Never on a pull request: this job spends LLM tokens, emails the user and commits
+    # state to main. `needs: tests` keeps the suites gating it exactly as before.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Stage 5 corroboration is the only stage that scales with search latency, and it is
+    # capped at MAX_CORROBORATE_PER_RUN. 20 minutes carries headroom over the observed run.
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+      LLM_PROVIDER:      ${{ vars.LLM_PROVIDER }}
+      SMTP_HOST:         ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:         ${{ secrets.SMTP_PORT }}
+      SMTP_USER:         ${{ secrets.SMTP_USER }}
+      SMTP_PASS:         ${{ secrets.SMTP_PASS }}
+      EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+      EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+      SHOP_HUNTER_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+
+      - name: Run find_deals.py
+        run: python find_deals.py
+
+      - name: Persist state
+        run: |
+          git config user.name "shop-hunter"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/
+          git commit -m "update state [skip ci]" || echo "no changes"
+          git pull --rebase origin main || echo "nothing to rebase"
+          git push
