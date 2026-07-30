@@ -87,10 +87,10 @@
   --aurora-1: rgba(56, 189, 248, 0.32); --aurora-2: rgba(129, 140, 248, 0.3); --aurora-3: rgba(251, 146, 60, 0.18);
 }
 
-/* tier accent resolves off a per-element --accent var set by .tier-* */
-.tier-diamond { --accent: var(--diamond); --accent-ink: var(--diamond-ink); }
-.tier-good { --accent: var(--good); --accent-ink: var(--good-ink); }
-.tier-skip { --accent: var(--skip); --accent-ink: var(--ink-2); }
+/* verdict accent resolves off a per-element --accent var set by .verdict-* */
+.verdict-strong { --accent: var(--diamond); --accent-ink: var(--diamond-ink); }
+.verdict-fair { --accent: var(--good); --accent-ink: var(--good-ink); }
+.verdict-skip { --accent: var(--skip); --accent-ink: var(--ink-2); }
 
 * { box-sizing: border-box; }
 
@@ -290,8 +290,8 @@ button { font-family: inherit; color: inherit; }
 .seg.on { color: #fff; border-color: transparent; box-shadow: var(--shadow); }
 .seg.on .seg-glyph { opacity: 1; }
 .seg.on .seg-count { background: rgba(255, 255, 255, 0.25); color: #fff; }
-.seg-diamond.on { background: linear-gradient(120deg, #06b6d4, #3b82f6); }
-.seg-good.on { background: linear-gradient(120deg, #f59e0b, #f97316); }
+.seg-strong.on { background: linear-gradient(120deg, #06b6d4, #3b82f6); }
+.seg-fair.on { background: linear-gradient(120deg, #f59e0b, #f97316); }
 .seg-skip.on { background: linear-gradient(120deg, #94a3b8, #64748b); }
 
 .select-wrap { position: relative; }
@@ -372,7 +372,7 @@ select:focus { outline: none; border-color: var(--diamond); }
   border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .badge-glyph { font-size: 10px; }
-.tier-skip .badge { color: var(--ink-2); }
+.verdict-skip .badge { color: var(--ink-2); }
 
 .card-dest {
   font-family: var(--font-display);
