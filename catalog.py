@@ -583,6 +583,151 @@ WISHLIST = {
                      "paper", "liner", "мазнина", "oil"],
         },
     },
+    # ── Computing and phones ────────────────────────────────────────────
+    "tech.laptop": {
+        "class": "durable", "label": "Laptop, mid-range (8GB+ RAM / 256GB+ SSD)",
+        "trigger_eur": 450.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["лаптоп"], ["laptop"], ["notebook"]],
+            "none": ["чанта", "калъф", "case", "зарядно", "charger", "адаптер",
+                     "adapter", "стойка", "stand", "раница", "backpack", "sleeve",
+                     "аксесоар", "accessory"],
+        },
+    },
+    "tech.tablet": {
+        "class": "durable", "label": "Tablet, mid-range",
+        "trigger_eur": 180.00, "restock_days": 1460,
+        "match": {
+            "any_of": [["таблет"], ["tablet"]],
+            "none": ["хапче", "лекарство", "витамин", "vitamin", "калъф", "case",
+                     "стойка", "stand", "фолио", "protector", "стъкло"],
+        },
+    },
+    "tech.phone": {
+        "class": "durable", "label": "Smartphone, mid-range",
+        "trigger_eur": 220.00, "restock_days": 1095,
+        "match": {
+            "any_of": [["телефон"], ["smartphone"], ["phone"]],
+            "none": ["калъф", "case", "стъкло", "screen", "protector", "зарядно",
+                     "charger", "кабел", "cable", "поставка", "holder"],
+        },
+    },
+    "av.tv": {
+        "class": "durable", "label": "TV, 50-55\" 4K",
+        "trigger_eur": 280.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["телевизор"], ["fernseher"], ["smart", "tv"], ["led", "tv"]],
+            "none": ["стойка", "stand", "конзола", "wall", "mount", "стена",
+                     "дистанционно", "remote", "тонколони", "soundbar", "калъф",
+                     "case", "кутия", "box", "аксесоар", "accessory"],
+        },
+    },
+    "tech.ereader": {
+        "class": "durable", "label": "E-reader (Kindle/Kobo)",
+        "trigger_eur": 75.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["amazon", "kindle"], ["kobo"], ["електронен", "четец"],
+                       ["e", "reader"]],
+            "none": ["калъф", "case", "cover", "фолио", "protector", "стойка",
+                     "stand", "играчка", "toy"],
+        },
+    },
+    # ── Kitchen appliances ───────────────────────────────────────────────
+    "kitchen.coffee_machine": {
+        "class": "durable", "label": "Espresso / bean-to-cup coffee machine",
+        "trigger_eur": 200.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["кафемашина"], ["espresso", "machine"], ["кафе", "машина"],
+                       ["kaffeemaschine"], ["nespresso", "машина"]],
+            "none": ["капсули", "capsules", "хартиен", "filter", "филтър",
+                     "почистващ", "descaler", "entkalker", "чашки", "cups",
+                     "накип", "descale", "играчка", "toy", "резервен", "spare",
+                     "part"],
+        },
+    },
+    "kitchen.stand_mixer": {
+        "class": "durable", "label": "Stand mixer / food processor",
+        "trigger_eur": 100.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["кухненски", "робот"], ["stand", "mixer"],
+                       ["food", "processor"], ["kuchenmaschine"],
+                       ["миксер", "кухненски"]],
+            "none": ["приставка", "attachment", "купа", "bowl", "резервна",
+                     "резервен", "spare", "part", "аксесоар", "accessory"],
+        },
+    },
+    "kitchen.multicooker": {
+        "class": "durable", "label": "Pressure cooker / multicooker",
+        "trigger_eur": 55.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["мултикукър"], ["multicooker"], ["pressure", "cooker"],
+                       ["instant", "pot"]],
+            "none": ["уплътнение", "гума", "gasket", "капак", "lid", "spare",
+                     "part", "резервен", "измервателна"],
+        },
+    },
+    # ── Large appliances ─────────────────────────────────────────────────
+    "house.dishwasher": {
+        "class": "durable", "label": "Dishwasher, built-in or freestanding",
+        "trigger_eur": 280.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["съдомиялна"], ["dishwasher"], ["spulmaschine"]],
+            "none": ["таблетки", "tablets", "капсули", "capsules", "гел", "gel",
+                     "сол", "salt", "гланц", "rinse", "препарат", "detergent",
+                     "части", "spare", "филтър", "filter"],
+        },
+    },
+    "house.washing_machine": {
+        "class": "durable", "label": "Washing machine, 7-8 kg",
+        "trigger_eur": 280.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["перална", "машина"], ["washing", "machine"],
+                       ["waschmaschine"], ["перална"]],
+            "none": ["прах", "powder", "капсули", "capsules", "гел", "gel",
+                     "омекотител", "softener", "маркуч", "hose", "филтър",
+                     "filter", "части", "spare", "стойка", "stand"],
+        },
+    },
+    "house.stick_vacuum": {
+        "class": "durable", "label": "Upright / cordless stick vacuum cleaner",
+        "trigger_eur": 100.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["прахосмукачка", "безжична"], ["stick", "vacuum"],
+                       ["upright", "vacuum"], ["akkusauger"],
+                       ["прахосмукачка", "стик"]],
+            "none": ["чанта", "bag", "торбичк", "филтър", "filter", "четка",
+                     "brush", "маркуч", "hose", "части", "spare", "робот",
+                     "robot"],
+        },
+    },
+    "house.chest_freezer": {
+        "class": "durable", "label": "Chest freezer, 200 L+",
+        "trigger_eur": 200.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["фризер", "ковчег"], ["chest", "freezer"],
+                       ["gefriertruhe"]],
+            "none": ["хладилник", "fridge", "части", "spare", "филтър", "filter"],
+        },
+    },
+    # ── Family / DIY ─────────────────────────────────────────────────────
+    "baby.car_seat": {
+        "class": "durable", "label": "Child car seat",
+        "trigger_eur": 90.00, "restock_days": 1095,
+        "match": {
+            "any_of": [["столче", "кола"], ["car", "seat"], ["autositz"]],
+            "none": ["хранене", "количка", "stroller", "играчка", "toy", "калъф",
+                     "cover", "велосипед", "bike", "части", "spare"],
+        },
+    },
+    "tools.cordless_diy": {
+        "class": "durable", "label": "Cordless drill/driver DIY tool",
+        "trigger_eur": 65.00, "restock_days": 1825,
+        "match": {
+            "any_of": [["акумулаторна", "бормашина"], ["cordless", "drill"],
+                       ["akkuschrauber"], ["акумулаторен", "винтоверт"]],
+            "none": ["резервна", "spare", "части", "part", "накрайник", "bit"],
+        },
+    },
 }
 
 # Every sku the pipeline knows, consumables first so a consumable rule wins a tie.
