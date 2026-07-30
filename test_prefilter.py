@@ -16,7 +16,7 @@ REASONS = {
 def offer(**kw):
     """A full offer/candidate dict, contract defaults, overridden by kw."""
     o = {
-        "source": "broshura", "retailer": "Kaufland", "name": "Item",
+        "source": "llm_discover", "retailer": "Kaufland", "name": "Item",
         "price_eur": 10.0, "was_price_eur": None, "claimed_discount": None,
         "valid_until": None, "url": "", "heat": None, "category_hint": None,
         "raw": "", "sku": None, "sku_class": None, "match_conf": None,
@@ -27,7 +27,7 @@ def offer(**kw):
 
 
 # ── 4000 synthetic offers across 10 deterministic patterns ───────────────────
-SOURCES = ["broshura", "ccc", "mydealz", "llm_discover"]
+SOURCES = ["ccc", "mydealz", "llm_discover"]
 
 
 def build_bulk(n=4000):
@@ -161,7 +161,7 @@ chk("consumable-hint discovery leads are all rejected no_sku_match",
 # ── Named regression scenarios (isolated, small, deterministic lists) ────────
 
 # Washing-machine regression: durable, 10% claimed discount, no trigger hit -> shallow_claim
-wm = offer(source="broshura", retailer="Technopolis", sku="test.washing_machine",
+wm = offer(source="llm_discover", retailer="Technopolis", sku="test.washing_machine",
            sku_class="durable", match_conf="high",
            name="Washing machine", price_eur=450.0, was_price_eur=500.0,
            claimed_discount=0.10)
@@ -171,7 +171,7 @@ chk("washing machine at 10% off, no trigger hit, is rejected shallow_claim",
     f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
 
 # 60% off a EUR 9 item -> tiny_ticket
-cheap = offer(source="broshura", retailer="Metro", sku="test.cheap_gadget",
+cheap = offer(source="llm_discover", retailer="Metro", sku="test.cheap_gadget",
               sku_class="durable", match_conf="high",
               name="Cheap gadget", price_eur=3.6, was_price_eur=9.0,
               claimed_discount=0.60)
@@ -181,7 +181,7 @@ chk("60% off a EUR 9 item is rejected tiny_ticket",
     f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
 
 # Wishlist durable AT its trigger price survives even with only a 5% claimed discount
-trig = offer(source="broshura", retailer="Amazon.de", sku="av.sony_xm5",
+trig = offer(source="llm_discover", retailer="Amazon.de", sku="av.sony_xm5",
              sku_class="durable", match_conf="high",
              name="Sony WH-1000XM5", price_eur=200.0, was_price_eur=210.0,
              claimed_discount=0.05)
@@ -191,10 +191,10 @@ chk("a wishlist durable AT its trigger price survives a weak 5% claim",
     f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
 
 # Dedup keeps the CHEAPEST unit price, not the first seen
-d1 = offer(source="broshura", retailer="Lidl", sku="food.salmon_fillet",
+d1 = offer(source="llm_discover", retailer="Lidl", sku="food.salmon_fillet",
            sku_class="consumable", match_conf="high",
            price_eur=11.0, qty=1.0, unit="kg", unit_price_eur=11.0)
-d2 = offer(source="broshura", retailer="Lidl", sku="food.salmon_fillet",
+d2 = offer(source="llm_discover", retailer="Lidl", sku="food.salmon_fillet",
            sku_class="consumable", match_conf="high",
            price_eur=9.5, qty=1.0, unit="kg", unit_price_eur=9.5)
 cands, rejs, _ = prefilter([d1, d2], TODAY)

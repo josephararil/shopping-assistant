@@ -116,6 +116,12 @@ SOURCE_CAPS = {
     "llm_discover": 30,
 }
 
+# Cap applied to a source with no SOURCE_CAPS entry. Deliberately non-zero: capping an
+# unknown source at 0 silently discards every one of its offers, so adding a fetcher to
+# sources.py and forgetting it here would produce a permanently empty feed that looks
+# exactly like a quiet week. prefilter prints a loud warning when it falls back to this.
+DEFAULT_SOURCE_CAP = 8
+
 # A matched consumable whose unit price is plainly not a deal costs ZERO LLM tokens:
 # rejected as `over_par` and rendered in the email's reject footer with real numbers.
 # Slack above par so a borderline item still gets audited.

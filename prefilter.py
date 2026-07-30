@@ -174,7 +174,13 @@ def prefilter(offers, today, par_stats=None):
 
     candidates = []
     for source, group in by_source.items():
-        cap = C.SOURCE_CAPS.get(source, 0)
+        cap = C.SOURCE_CAPS.get(source)
+        if cap is None:
+            # Never fall back to 0: that would discard the whole source in silence, which
+            # is indistinguishable from a quiet week. Warn loudly and let some through.
+            cap = C.DEFAULT_SOURCE_CAP
+            print(f"  [prefilter WARNING] source {source!r} has no SOURCE_CAPS entry — "
+                  f"falling back to DEFAULT_SOURCE_CAP={cap}. Add it to config.SOURCE_CAPS.")
         ordered = sorted(group, key=lambda o: _attractiveness(o, par_stats), reverse=True)
         for o in ordered[:cap]:
             candidates.append(o)
