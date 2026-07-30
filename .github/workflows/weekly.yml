@@ -1,0 +1,78 @@
+name: weekly
+
+# Weekly Bulgarian shopping-deal hunt. Harvests retail leaflets and price-drop feeds,
+# cuts ~1600 offers to <=68 candidates deterministically, then spends three LLM calls:
+# discover (search) -> audit (batched, no search) -> corroborate (search, gated).
+# Emails only when at least one Strong Buy or Fair survives; otherwise writes state
+# and exits quietly.
+#
+# The commit-back step is load-bearing, not housekeeping: state/price_history.json is
+# the pipeline's substitute for a paid price-history API. It is worthless in week 1 and
+# decisive by week 12, and it only accumulates because CI commits it back every run.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every stage and write state, but send no email and do not mark_seen"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: shop-hunter-weekly
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    # Stage 5 corroboration is the only stage that scales with search latency, and it is
+    # capped at MAX_CORROBORATE_PER_RUN. 20 minutes carries headroom over the observed run.
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY:    ${{ secrets.GEMINI_API_KEY }}
+      LLM_PROVIDER:      ${{ vars.LLM_PROVIDER }}
+      SMTP_HOST:         ${{ secrets.SMTP_HOST }}
+      SMTP_PORT:         ${{ secrets.SMTP_PORT }}
+      SMTP_USER:         ${{ secrets.SMTP_USER }}
+      SMTP_PASS:         ${{ secrets.SMTP_PASS }}
+      EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+      EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+      SHOP_HUNTER_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+
+      # The offline suites gate the run. A parser broken by a site layout change is
+      # caught here, against committed fixtures, instead of silently harvesting nothing
+      # and producing a digest that merely looks like a quiet week.
+      - name: Offline test suites
+        run: |
+          python test_match.py
+          python test_sources.py
+          python test_prefilter.py
+          python test_history.py
+          python test_verdicts.py
+          python test_stub.py
+
+      - name: Run find_deals.py
+        run: python find_deals.py
+
+      - name: Persist state
+        run: |
+          git config user.name "shop-hunter"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/
+          git commit -m "update state [skip ci]" || echo "no changes"
+          git pull --rebase origin main || echo "nothing to rebase"
+          git push

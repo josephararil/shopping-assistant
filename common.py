@@ -1,4 +1,9 @@
-"""Shared helpers for the diamond-finder pipeline."""
+"""Shared helpers for the Shop Hunter pipeline.
+
+Carried over from deal-hunter with zero travel content beyond the fallback search
+directive below. The four names config.py must keep for this module to work are
+WEB_SEARCH_MAX_USES, GEMINI_MODEL_MAP, GEMINI_SEARCH_MODEL and SEARCH_RESULTS_PREAMBLE.
+"""
 
 import os, json, ssl, smtplib, datetime as dt, time
 from email.message import EmailMessage
@@ -128,8 +133,11 @@ def _gemini(messages, model, max_tokens, want_search, response_schema=None, sear
         else:
             search_text = (
                 "Search the web for current, concrete facts relevant to the task below: "
-                "real prices, dates, availability, named hotels/destinations, and sources. "
-                "Return a thorough list of findings. Do not write final analysis or JSON.\n\n"
+                "real product prices in EUR, pack sizes as printed, named retailers, "
+                "promotion validity dates, and sources. Report pack sizes verbatim and do "
+                "NOT compute any price per kilo or per litre — the pipeline does all "
+                "arithmetic. Return a thorough list of findings. Do not write final "
+                "analysis or JSON.\n\n"
                 "TASK:\n" + text)
         grounding = _gemini_search(search_text, max_tokens)
         if grounding:
