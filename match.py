@@ -221,17 +221,34 @@ def match_sku(offer):
     An offer matches item X iff some group in X["match"]["any_of"] is a whole-token
     SUBSET of tokens(offer["name"]) AND no X["match"]["none"] word is present.
 
-    The veto check is a substring test against each token (not exact token equality):
-    catalog.py states Bulgarian inflection is NOT stemmed, so a none-word written as a
-    bare stem ("пушен") must still veto an inflected form ("пушена") that tokens()
-    keeps as one unsplit word. any_of stays whole-token (never substring) per the
-    frozen contract; only the veto side needs this to catch the smoked-vs-fresh trap.
+    THE VETO IS A PREFIX TEST, `any_of` IS EXACT. That asymmetry is deliberate and was
+    measured, not guessed — all three candidate semantics were run over the 52 real feed
+    titles in fixtures/:
+
+      exact token equality  — LEAKS the smoked-vs-fresh trap. catalog.py writes the veto
+        as the bare stem "пушен" but tokens() does no stemming, so "Пушена сьомга" only
+        ever yields "пушена"/"pushena" and the cat-food-grade trap gets through.
+      substring anywhere    — fixes that trap but SILENTLY VETOES 9 real deals: "spare"
+        inside "transparent", "cat" inside "speedcat", "liner" inside "berliner",
+        "paper" inside "epaper", "bar" inside "verstellbare". Each is a false negative
+        that drops a genuine find with no trace.
+      prefix                — fixes the trap with zero spurious hits.
+
+    Prefix is also the linguistically correct tool: Bulgarian inflection is SUFFIXAL, so
+    "пушен" prefixes "пушена"/"пушено"/"пушени" and "сьомг" prefixes "сьомгата". Write
+    veto entries as stems.
+
+    `any_of` stays strict whole-token per the frozen contract — that is what makes the
+    travel repo's substring footgun impossible. The asymmetry is justified because the
+    two errors are not symmetric: a missed veto is a FALSE POSITIVE, which costs LLM
+    budget and user trust, while a missed match is merely a miss that catalog_health
+    surfaces after CATALOG_STALE_RUNS runs.
     """
     toks = tokens(offer.get("name") or "")
     for sku, item in catalog.CATALOG.items():
         rules = item.get("match", {})
         none_words = rules.get("none", [])
-        if any(nw in tok for tok in toks for nw in none_words):
+        if any(tok.startswith(nw) for tok in toks for nw in none_words):
             continue
         for group in rules.get("any_of", []):
             if set(group).issubset(toks):

@@ -124,5 +124,29 @@ chk("consumable unit mismatch (L on a kg sku) discarded as failed parse",
     mismatched["qty"] is None and mismatched["unit"] is None and mismatched["pending_qty"] is True,
     mismatched)
 
-print(f"\n{len(_fails)} failure(s)" if _fails else "\nAll match tests passed.")
+
+# ── Veto semantics: prefix, not substring-anywhere ───────────────────────────
+# Measured over the 52 real titles in fixtures/: substring-anywhere silently vetoed 9
+# genuine deals ("spare" inside "transparent", "cat" inside "speedcat", "liner" inside
+# "berliner"). Exact-token equality leaked the smoked-salmon trap. These assert the
+# prefix behaviour that fixes the trap without the false negatives — if someone widens
+# the veto back to substring-anywhere, the three MUST-MATCH rows below go red.
+def _m(nm):
+    return match.match_sku({"name": nm})[0]
+
+chk("veto is suffix-tolerant: 'пушен' vetoes 'Пушена сьомга'",
+    _m("Пушена сьомга 200 г") != "food.salmon_fillet")
+chk("veto is NOT substring-anywhere: 'spare' must not veto via 'transparent'",
+    _m("Roborock Q7 робот прахосмукачка transparent капак") == "tech.robot_vacuum",
+    f"got {_m('Roborock Q7 робот прахосмукачка transparent капак')}")
+chk("veto is NOT substring-anywhere: 'cat' must not veto via 'speedcat'",
+    _m("Сьомга филе прясна speedcat edition 1 кг") == "food.salmon_fillet",
+    f"got {_m('Сьомга филе прясна speedcat edition 1 кг')}")
+chk("veto is NOT substring-anywhere: 'ear' must not veto via 'year'",
+    _m("Sony WH-1000XM5 headphones 2 year warranty") == "av.sony_xm5",
+    f"got {_m('Sony WH-1000XM5 headphones 2 year warranty')}")
+chk("veto still fires as a whole word: 'калъф' vetoes the case",
+    _m("Калъф за Sony WH-1000XM5") != "av.sony_xm5")
+
+print(f"\n{len(_fails)} failure(s): {_fails}" if _fails else "\nAll match tests passed.")
 sys.exit(1 if _fails else 0)

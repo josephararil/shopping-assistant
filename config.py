@@ -34,7 +34,17 @@ match.annotate() adds, in place:
   pending_qty     bool   True when sku matched but parse_qty failed; the audit
                          transcribes pack_qty/pack_unit and Python then divides.
 
-prefilter() adds `reject_reason` (str) to rejects and leaves candidates unmarked.
+prefilter() adds `reject_reason` (str) to rejects, and to every SURVIVOR adds:
+
+  on_list         bool   True for a catalog sku, False for an off-list discovery find.
+                         Passed straight to verdict_durable(on_list=...), which is why
+                         it must be set here and nowhere else.
+
+On an off-list discovery survivor it also MINTS `sku` = "disc." + match.slug(name),
+`sku_class` = "durable" and `match_conf` = "medium". prefilter is the only place a
+`disc.*` sku can come into existence — match.py never invents one, because minting an
+identifier is a budgeting decision (it costs a Stage-4 slot), not a matching one.
+
 The audit adds fit_score / reference_price_eur / trap_detected / prose fields.
 Verdict stage adds verdict / discount / saving_eur / evidence / rank_score / failed_gates.
 """
