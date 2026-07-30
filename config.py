@@ -111,6 +111,7 @@ WEB_SEARCH_MAX_USES = 6
 # Consequence: consumables have no deterministic source, so Stage 3 DISCOVER is now
 # their PRIMARY source rather than a gap-filler, and its cap carries most of the budget.
 SOURCE_CAPS = {
+    "lidl":         20,
     "ccc":           8,
     "mydealz":       8,
     "llm_discover": 30,
@@ -154,13 +155,48 @@ MAX_GAP_QUERIES = 40
 # a layout change silently drops 99% of offers and the week just looks quiet.
 # ccc is set at 15 rather than 20 because the live feed carries exactly 20 items, so a
 # threshold of 20 would fire on a single malformed title.
-MIN_EXPECTED_OFFERS = {"ccc": 15, "mydealz": 10}
+MIN_EXPECTED_OFFERS = {"lidl": 300, "ccc": 15, "mydealz": 10}
 
-# `regular` observations may come ONLY from these sources. Every harvest source is a
-# PROMOTIONS feed, so a price from any of them is a promo price by construction — a par
-# blended from them walks downhill weekly until the digest goes silently empty, which is
-# failure mode #1 and it fails invisibly. Only Stage-5 comparator listings qualify.
-REGULAR_ALLOWED_SOURCES = {"corroborate"}
+# `regular` observations may come ONLY from these sources, and this MUST stay an
+# allowlist. Almost every source is a PROMOTIONS feed, so a price from one is a promo
+# price by construction — a par blended from promo prices walks downhill weekly until the
+# digest goes silently empty, which is failure mode #1 and it fails invisibly.
+#
+# Two sources qualify, for the same reason: each supplies a price that is genuinely NOT a
+# promotion.
+#   corroborate   — Stage-5 comparator listings at other retailers.
+#   lidl_regular  — the `Цена` column of Lidl BG's legally-mandated daily price export,
+#                   which is the ordinary shelf price. `Цена в промоция` is the promo and
+#                   is harvested separately as source "lidl"; the two must never be mixed.
+REGULAR_ALLOWED_SOURCES = {"corroborate", "lidl_regular"}
+
+# ── Lidl BG statutory price export ──────────────────────────────────────────
+# Bulgarian euro-adoption law (Закон за въвеждане на еврото, чл. 55б) requires retailers
+# to publish daily per-store retail AND promotional prices. Lidl BG does so as .xlsx,
+# which is a ZIP of XML and therefore parseable with stdlib zipfile + ElementTree — NO
+# openpyxl and no new dependency. Verified 2026-07-30: HTTP 200, 6.76 MB, 102,097 rows,
+# 709 unique products across 144 stores, prices in EUR, and www.lidl.bg/robots.txt does
+# not disallow this path.
+#
+# This is the most valuable source in the pipeline and not because of its promotions: the
+# `Цена` column is a genuine non-promo shelf price, which is the ONLY thing that can
+# populate the `regular` series. Without it, effective_par and the regular_median evidence
+# leg stay dead until the corroborate stage has slowly built ~12 weeks of history.
+LIDL_EXPORT_URLS = [
+    "https://www.lidl.bg/explore/assets/webPriceData/bg/ExportFirstList.xlsx",
+    "https://www.lidl.bg/explore/assets/webPriceData/bg/ExportSecondList.xlsx",
+]
+
+# Only rows whose "Търговски обект" contains this string are used. The export is
+# per-store and the household shops near Plovdiv, so a chain-wide average would be
+# actively misleading — and store-level prices retire the "leaflet prices are chain-level,
+# check your local store" caveat entirely. 11 Plovdiv stores, ~7,800 rows.
+# Set to "" to take every store.
+LIDL_STORE_FILTER = "Пловдив"
+
+# The export is ~6.8 MB per list. Fetching two of them weekly is fine on CI, but a
+# generous timeout is needed — the download reset once during testing at the default.
+LIDL_HTTP_TIMEOUT = 180
 
 # ── The evidence model ──────────────────────────────────────────────────────
 # ref_evidence scores REFERENCE credibility, NEVER offer credibility. Offer

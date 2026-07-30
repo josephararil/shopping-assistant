@@ -1,0 +1,230 @@
+# CLAUDE.md — Shop Hunter
+
+A weekly Bulgarian shopping-deal finder. Runs on free GitHub Actions every Monday 06:00 UTC,
+emails only when something is genuinely worth buying, and commits its own state back to the repo.
+
+The user's hard requirement, verbatim, is the design brief:
+
+> It is CRITICAL that this pipeline is ruthless and understands what is a real, true promotion
+> vs what is marketing nonsense. Otherwise all the effort will ultimately just create a very
+> nice spam email. But also we don't want to be so ruthless and harsh that we don't send
+> anything because everything doesn't pass the impossible rules we have given Gemini.
+
+Both halves of that sentence are load-bearing. Most of the invariants below exist to hold one
+side or the other, and each records a decision a future implementer will otherwise undo.
+
+## Architecture
+
+```
+Stage 0 · HARVEST          deterministic   sources.py    ccc + mydealz RSS
+Stage 1 · NORMALISE+MATCH  deterministic   match.py      Python does ALL arithmetic
+Stage 2 · PREFILTER        deterministic   prefilter.py  -> <=46 candidates  [COST GOVERNOR]
+Stage 3 · DISCOVER         LLM #1 (search) the consumable source; Metro + silabg
+Stage 4 · AUDIT            LLM #2 (batched, no search)   the procurement audit
+Stage 5 · CORROBORATE      LLM #3 (search, gated, <=6)   only leads missing their evidence bar
+Stage 6 · VERDICT          deterministic   config.py     Strong Buy / Fair / Skip
+Stage 7 · DIGEST + STATE   deterministic   email, price_history, ledger, seen, deals_history
+```
+
+Two ordering rules:
+1. **Unit normalisation runs before the audit** — the audit must never see a raw pack price and
+   be tempted to reason about "per kilo" itself.
+2. **Corroboration runs before the verdict** — evidence arriving after the score is decoration.
+   Stage 5 can lower a reference, and must then force a **re-score**.
+
+`config.py` is the frozen contract: every field name, unit, divisor, threshold, prompt and
+schema. Knobs live there and nowhere else. `catalog.py` is user-owned data with no logic.
+
+## Invariants
+
+### The LLM never performs arithmetic
+It transcribes `pack_qty` / `pack_unit` / `price_value`; **Python** divides and converts. A model
+that reads "100 g" and emits "€1.09/kg" manufactures a 91% discount that saturates the ranking,
+clears every discount rung and beats every floor — one error amplified by six gates. Never
+"simplify" this by asking the model for a unit price. `catalog.UNIT_TO_BASE` is the only place
+the g→kg and ml→L divisors exist.
+
+This cuts both ways: **the same class of bug is possible in our own parsers.** `parse_eur` once
+read `1.393,28 €` as `393.28` and `2.499 €` as `2.499` — a €2499 television understated 1000×
+sits below every `trigger_eur` in the catalog, and a trigger hit deliberately bypasses every
+other gate, so nothing downstream could have caught it. Ten regressions in `test_match.py` guard
+the separator handling. Treat any money parser as load-bearing.
+
+### Observations split `promo` / `regular`; only `regular` may inform a par
+Every source feeding this pipeline is a promotions feed, so every price it observes is a promo
+price **by construction**. A par learned from them walks downhill every week until nothing
+qualifies and the digest goes silently empty — the most likely way this design fails, and it
+fails invisibly.
+
+- `promo` ← every sku-matched offer, **kept OR rejected**. Rejects carry the most information
+  about what a *normal promo* looks like: a store that never records the €15/kg weeks will think
+  €12/kg is expensive. Feeds `promo_floor()` = p10 of the promo series.
+- `regular` ← only genuine non-promo evidence: Stage-5 comparator listings.
+
+`history.record_regular` enforces this with an **allowlist** (`C.REGULAR_ALLOWED_SOURCES`), and it
+must stay an allowlist. It began as a denylist of the single string `"broshura"`, which grants
+every *new* source par-moving access by default — and that had already bitten: test fixtures were
+writing `source="ccc"` into `regular`, treating an Amazon price-drop feed as non-promo evidence.
+
+### `effective_par` clamps to the user's par and never overwrites it
+The pipeline may nudge a par by at most `PAR_DRIFT_MAX` (0.15), from the **regular series only**.
+A sustained gap surfaces as a par-review line in the email — a human decision, not an automatic
+one. Removing the clamp reintroduces silent par erosion.
+
+### `ref_evidence` scores REFERENCE credibility, never OFFER credibility
+Offer credibility is near-constant across these feeds. **The "before" price is where marketing
+nonsense lives.** A lone `retailer_claim` at 0.2 against bars of 1.0 / 2.0 / 2.5 is
+mathematically insufficient alone or with any one other weak leg — that is the whole answer to
+camelcamelcamel's unverifiable `from X€`.
+
+**Lowering `MIN_EVIDENCE_*` is how this becomes a spam email. Tune the discount rungs instead.**
+
+The `user_par` leg (1.0) is granted only where the sku has a hand-set `par_eur`. It exists because
+without it a leaflet consumable's total evidence is 0.2 against a 1.0 bar, so **no consumable
+could ever reach Strong Buy** and the whole consumable half of the digest would sit at Fair for
+~12 weeks while looking like correct ruthless behaviour. A consumable's reference *is* the user's
+own par, which is the most credible reference in the system. Durables have no par and so get no
+leg — which is what keeps the bar meaningful for them.
+
+### `trap_detected` is a reported observation, not a veto
+Python consumes it by zeroing the `retailer_claim` leg. The LLM cannot kill a lead.
+
+### `quality_flag` is one-way: demote only, never promote
+It may turn `Strong Buy` into `Skip`. It is not for "they don't need this" (that is `fit_score`)
+and not for "the discount looks fake" (that is `trap_detected`). This is the LLM's only lever over
+the outcome, and it is a narrow deliberate exception.
+
+### Off-list discovery can never exceed Fair
+Enforced in code via `OFFLIST_FAIR_CEILING`, not by a threshold, because this is *the* spam
+vector and a tuning mistake must not be able to open it. Off-list **consumable** discovery is cut
+entirely — with no par there is nothing to compute €/kg against.
+
+### `quarantine` ≠ `skip`
+`skip` means "evaluated, not worth it". `quarantine` means "we don't trust our own arithmetic".
+Quarantined leads never enter `record_promo`: a quarantined unit price in the promo series would
+set a phantom floor and silence that product permanently.
+
+### Nothing keys on prose
+`name` is display-only. `sku` is the key in `price_history`, `seen`, the ledger, catalog lookups
+and email grouping. The travel repo this was forked from substring-matched free-text labels
+(`alias.lower() in lookup` matches "Sony" inside "Sony Center Berlin") and silently applied the
+wrong par to every Bulgarian deal. **Catalog slugs are permanent identifiers — renaming one
+resets that product's history and TTL.**
+
+Matching is asymmetric, deliberately:
+- **`any_of` is exact whole-token AND-sets.** `["sony","xm5"]` cannot fire on "Sony TV".
+- **`none` is a PREFIX test.** Bulgarian inflection is suffixal, so the stem `"пушен"` vetoes
+  `пушена` / `пушено` / `пушени`.
+
+The asymmetry was measured, not guessed, over the 52 real titles in `fixtures/`: exact-token veto
+leaks the smoked-vs-fresh trap; substring-anywhere fixes that but silently vetoes 9 genuine deals
+(`spare`⊂`transparent`, `cat`⊂`speedcat`, `liner`⊂`berliner`); prefix fixes it with zero spurious
+hits. It is justified because the errors are not symmetric — **a missed veto is a false positive**,
+costing budget and trust, while a missed match is a miss that `catalog_health` surfaces after
+`CATALOG_STALE_RUNS` runs.
+
+### A Strong Buy's TTL is the item's own `restock_days`, not a global constant
+A recurring salmon promo the household already stocked up on stays quiet ~90 days; a genuinely
+annual whey-protein promo re-alerts at ~300. One global TTL cannot do both, so **`prune_seen` must
+prune per-record against that record's own `ttl_days`** — one global cutoff would delete a 300-day
+whey suppression after 30 days.
+
+**Retailer lives in the seen *record*, not the seen *key*.** Suppression is about the household's
+stock, not the shop — five chains carrying one stocked-up item would otherwise be five alerts.
+`PRICE_BREAKTHROUGH` still lets a materially better price through, and a verdict upgrade
+(Fair → Strong Buy) re-notifies.
+
+**Repeats are demoted, not hidden.** A weekly digest that silently omits the item you are about to
+buy is worse than one that shows it quietly.
+
+### `mark_seen` runs only after a successful send
+So an SMTP failure retries next run instead of silently swallowing a week.
+
+### `deals_history.json` is appended only from the exact emailed set
+It is the `web/` UI's data source and must reflect what was actually sent.
+
+### Thresholds reach prompts only via `gates_prompt_text()`
+The travel repo hardcoded `>= 80` in a prompt while the real gate lived in `STAGE1_MIN_SCORE`; they
+drifted and the prompt confidently lied to the model for months.
+
+### A failing source contributes `[]` and a visible report line
+It never raises and never silently disappears. `MIN_EXPECTED_OFFERS` warns when a parse
+"succeeds" but returns 12 items instead of 1500. Likewise **an unknown source is never capped at
+zero** — `SOURCE_CAPS.get(source)` falling back to 0 would discard a whole feed in silence,
+indistinguishable from a quiet week; it falls back to `DEFAULT_SOURCE_CAP` with a loud warning.
+
+### No BGN, anywhere
+`parse_eur` returns `None` for a `лв.` amount. There is no conversion code and none may be added.
+
+### No new dependencies
+`requirements.txt` is `requests` + `python-dotenv`. RSS via stdlib `xml.etree.ElementTree`, HTML
+via `re` + `html.unescape`. Tests are hand-rolled `chk(name, cond, detail)` + `sys.exit(1)`.
+**No pytest, no bs4, no feedparser.** No test touches the network — every parser test reads a
+committed fixture from `fixtures/`.
+
+## Data sources
+
+| Source | Status |
+|---|---|
+| `de.camelcamelcamel.com/top_drops/feed` | ✅ RSS works (HTML pages are 403 Cloudflare). 20 items |
+| `www.mydealz.de/rss/hot` | ✅ Works. 30 items, `pepper:merchant` price + `106°` heat |
+| Stage-3 LLM search | The **primary consumable source** — see below |
+| `broshura.bg` | ❌ **Ruled out. Do not re-add.** See below |
+| `silabg.com/promocii` | ❌ 404. `/promo` is a gift-with-purchase threshold list, not discounts |
+| Metro Bulgaria | ⚠ No feed; covered by Stage 3 |
+
+**Why there is no broshura scraper.** The original plan specified `broshura.bg/oferti` as ~1552
+product-level offers carrying name + EUR + BGN + retailer + `Важи до`. That does not reproduce.
+Measured 2026-07-30: a plain GET returns 218 KB containing **five** EUR amounts in total, and
+`/xhr/popularGridOffers`, `?page=2` and `/hranitelni-stoki` all return the same SPA shell. Rendered
+in a real browser with JS executed, the page shows brochure tiles with no prices plus a furniture
+widget with no retailer and no validity date; the browser's own network trace exposes no
+offer-data endpoint. What the site serves is the scanned-image brochure listing that was already
+ruled out as OCR-only. The measurement is recorded at `config.SOURCE_CAPS` so nobody re-adds a
+scraper on the strength of the original claim.
+
+Consequence: consumables have no deterministic source. `MAX_GAP_QUERIES` is 40 so Stage 3 covers
+the whole watchlist weekly, and `llm_discover`'s cap carries most of the budget.
+
+## Calibration
+
+Target: **2–6 Strong Buys and 8–20 Fairs per week.** Weeks 1–4 are calibration, not production —
+the pars are the highest-value and most tedious input and only the user can really supply them,
+and `promo_floor` needs ~6 weeks to bite.
+
+**Read the `failed_gates` histogram in `state/last_run.json` before touching any threshold:**
+
+- `discount` dominates → `CONSUMABLE_STRONG_DISCOUNT` is too high
+- `evidence` dominates → corroboration is under-firing; **raise `MAX_CORROBORATE_PER_RUN`, do not
+  lower the evidence bar**
+- `abs_savings` dominates → the watchlist is full of low-ticket items; prune the catalog
+- `near_floor` dominates → pars are set above what the market routinely does; lower the pars
+- `fit` dominates → the watchlist holds items the household does not actually want
+
+## Development
+
+```bash
+python test_match.py && python test_prefilter.py && python test_history.py \
+  && python test_verdicts.py && python test_sources.py && python test_stub.py
+```
+
+All six run offline in under a second. CI gates the weekly run on them, so a parser broken by a
+site layout change fails loudly instead of harvesting nothing and producing a digest that merely
+looks like a quiet week.
+
+- `python find_deals.py --dry-run` — Stages 0–2 against the live web, exits before any LLM call.
+- `SHOP_HUNTER_DRY_RUN=1 python find_deals.py` — every stage, writes state, sends no email and
+  does not `mark_seen`. This is the tool for weeks 1–4.
+- `C.FORCE_INCLUDE` bypasses suppression for one run, for debugging a single item.
+- `npm run dev --prefix web` — the browsable archive, fed by `state/deals_history.json`.
+
+`web/public/data.json` and `web/dist/` are build output: gitignored, regenerated by
+`npm run sync-data`. Never commit or hand-edit them.
+
+## Out of scope for v1
+
+So nobody builds them by accident: OCR of scanned brochures · any per-product page fetch (403
+risk; the corroborate call covers it) · off-list discovery reaching Strong Buy · off-list
+consumable discovery · any BGN handling or conversion · stock or branch-level availability ·
+Keepa / Amazon PA-API / any paid API · sparkline charts in `web/` (text stats until the store has
+~12 weeks of depth) · a second notification channel.
