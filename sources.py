@@ -1,20 +1,22 @@
 """sources.py — deterministic feed fetchers for the Shop Hunter pipeline.
 
-Two sources only: `ccc` (camelcamelcamel top price drops, RSS) and `mydealz` (mydealz
-hot deals, RSS). A third grocery-leaflet source named in the original plan was
-measured on 2026-07-30 and does not exist as a scrapeable feed (see the comment
-above config.SOURCE_CAPS for the measurement) — it is NOT implemented here and must
-never be added.
+Three sources: `ccc` (camelcamelcamel top price drops, RSS), `mydealz` (mydealz hot
+deals, RSS) and `lidl` (Lidl BG's statutory daily price export, .xlsx). A grocery-
+leaflet source named in the original plan was measured on 2026-07-30 and does not
+exist as a scrapeable feed (see the comment above config.SOURCE_CAPS for the
+measurement) — it is NOT implemented here and must never be added.
 
-`_fetch_text` is the only function in this module that touches the network; every
-parser below is pure and takes a string. Every `fetch_*` wraps fetch+parse in
-try/except and NEVER raises — a failing source contributes [] plus a visible report
-line (CONTRACT §9).
+`_fetch_text` / `_fetch_bytes` are the only functions in this module that touch the
+network; every parser below is pure. Every `fetch_*` wraps fetch+parse in try/except
+and NEVER raises — a failing source contributes [] plus a visible report line
+(CONTRACT §9).
 """
 
 import html
 import re
 import xml.etree.ElementTree as ET
+import zipfile
+from io import BytesIO
 
 import config as C
 import catalog
@@ -44,6 +46,19 @@ def _fetch_text(url, timeout=25):
     resp = requests.get(url, headers={"User-Agent": _UA}, timeout=timeout)
     resp.raise_for_status()
     return resp.text
+
+
+def _fetch_bytes(url, timeout=25):
+    """The binary HTTP chokepoint (for the Lidl .xlsx export). RAISES on any failure."""
+    import requests
+
+    resp = requests.get(url, headers={"User-Agent": _UA}, timeout=timeout, stream=True)
+    resp.raise_for_status()
+    chunks = []
+    for chunk in resp.iter_content(chunk_size=1 << 16):
+        if chunk:
+            chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _blank_offer(source, raw):
@@ -78,12 +93,14 @@ def _claimed_discount(price_eur, was_price_eur):
 def _parse_de_amount(text):
     """European-formatted amount ('1.393,28€', '442€') -> float, or None.
 
-    Distinct from match.parse_eur: that function's regex allows only ONE decimal
-    separator group, so it mis-splits a thousands-separated figure like
-    "1.393,28€" (it would return 393.28, silently dropping the leading "1."). The
-    pepper:merchant `price` attribute is already an isolated, well-formed amount —
-    no surrounding prose to search through — so it gets its own strip-and-parse
-    rather than reusing parse_eur for a shape parse_eur was not built to handle.
+    Still distinct from match.parse_eur, but no longer for the original reason: that
+    function used to mis-split "1.393,28€" as 393.28 and now handles separators
+    correctly. What remains is that parse_eur searches PROSE and therefore requires a
+    currency marker ("€" or "eur") next to the digits, while the pepper:merchant
+    `price` attribute is a bare, already-isolated amount with no marker at all, so it
+    gets its own strip-and-parse. Note the two are NOT interchangeable in the other
+    direction either: this function treats "." as a thousands separator, which would
+    read Lidl's dot-decimal "7.15" as 715.
     """
     if not text:
         return None
@@ -216,8 +233,164 @@ def fetch_mydealz():
         return [], {"source": source, "ok": False, "n": 0, "note": f"{type(e).__name__}: {e}"}
 
 
+_XLSX_ROW_RE = re.compile(r'<row[^>]*r="\d+"[^>]*>.*?</row>', re.DOTALL)
+_XLSX_CELL_RE = re.compile(
+    r'<c r="(?P<col>[A-Z]+)\d+"[^>]*?(?:/>|>(?P<body>.*?)</c>)', re.DOTALL
+)
+_XLSX_INLINE_TEXT_RE = re.compile(r"<is>\s*<t[^>]*>(?P<text>.*?)</t>\s*</is>", re.DOTALL)
+
+
+def _parse_xlsx_rows(blob):
+    """-> list[dict] keyed by COLUMN LETTER ("B", "C", ...). Pure.
+
+    Reads xl/worksheets/sheet1.xml out of the .xlsx zip by hand: stdlib zipfile + a
+    regex cell scan rather than a full ET parse of the (huge) worksheet, because the
+    only structure that matters is "which column letter does this <c> belong to and
+    what inline text (if any) does it carry". Cells are t="inlineStr" with
+    <is><t>...</t></is> — sharedStrings.xml is empty (count="0") for this export, so
+    a shared-strings lookup would return every cell blank. Columns start at B and
+    trailing empty cells are OMITTED from a row entirely, so cells are mapped by the
+    column letter parsed out of each <c>'s own r="B23" attribute — never positionally.
+    The header row (row 1) is skipped; callers only see data rows.
+    """
+    rows = []
+    with zipfile.ZipFile(BytesIO(blob)) as zf:
+        sheet_xml = zf.read("xl/worksheets/sheet1.xml").decode("utf-8")
+
+    for row_idx, row_match in enumerate(_XLSX_ROW_RE.finditer(sheet_xml)):
+        if row_idx == 0:
+            continue  # header row
+        row_xml = row_match.group(0)
+        row = {}
+        for cell_match in _XLSX_CELL_RE.finditer(row_xml):
+            col = cell_match.group("col")
+            body = cell_match.group("body") or ""
+            text_match = _XLSX_INLINE_TEXT_RE.search(body)
+            row[col] = html.unescape(text_match.group("text")) if text_match else ""
+        rows.append(row)
+
+    return rows
+
+
+def parse_lidl(blob):
+    """-> (promo_offers, regular_rows). Pure.
+
+    promo_offers: one canonical offer per row with a non-empty "Цена в промоция",
+    de-duped across stores by product code keeping the LOWEST promo price.
+    regular_rows: one per distinct product code, the LOWEST "Цена" (ordinary shelf
+    price) observed — never an offer, never mixed with the promo series.
+    """
+    rows = _parse_xlsx_rows(blob)
+    if C.LIDL_STORE_FILTER:
+        rows = [r for r in rows if C.LIDL_STORE_FILTER in r.get("C", "")]
+
+    best_promo = {}  # product_code -> (promo_price, row)
+    best_regular = {}  # product_code -> (regular_price, name, category)
+
+    for row in rows:
+        code = row.get("E", "").strip()
+        if not code:
+            continue
+        name = row.get("D", "").strip()
+        category = row.get("F", "").strip() or None
+        regular_text = row.get("G", "").strip()
+        promo_text = row.get("H", "").strip()
+
+        regular_price = match.parse_eur(regular_text + " €") if regular_text else None
+        if regular_price is not None:
+            prev = best_regular.get(code)
+            if prev is None or regular_price < prev[0]:
+                best_regular[code] = (regular_price, name, category)
+
+        if promo_text:
+            promo_price = match.parse_eur(promo_text + " €")
+            if promo_price is not None:
+                prev = best_promo.get(code)
+                if prev is None or promo_price < prev[0]:
+                    best_promo[code] = (promo_price, name, category, regular_price)
+
+    promo_offers = []
+    for code, (promo_price, name, category, was_price) in best_promo.items():
+        # `raw` is a STRING for every source — it reaches prose contexts (the audit
+        # leads block, run.md, html.escape) where a dict would raise. The product code
+        # is what de-duping keys on, so it gets its own field rather than riding inside
+        # `raw`: an extra key is additive, a type change is not.
+        offer = _blank_offer("lidl", f"{code} — {name}")
+        offer["product_code"] = code
+        offer["retailer"] = "Lidl"
+        offer["name"] = name
+        offer["price_eur"] = promo_price
+        offer["was_price_eur"] = was_price
+        offer["claimed_discount"] = _claimed_discount(promo_price, was_price)
+        offer["valid_until"] = None  # this export carries no validity date
+        offer["url"] = ""
+        offer["heat"] = None
+        offer["category_hint"] = None
+        promo_offers.append(offer)
+
+    regular_rows = [
+        {"name": name, "product_code": code, "price_eur": price, "category": category}
+        for code, (price, name, category) in best_regular.items()
+    ]
+
+    return promo_offers, regular_rows
+
+
+def fetch_lidl():
+    """-> (promo_offers, regular_rows, report). NEVER raises.
+
+    Fetches BOTH C.LIDL_EXPORT_URLS and merges; one URL failing while the other
+    succeeds still yields data plus a note recording the failure.
+    """
+    source = "lidl"
+    promo_offers = []
+    regular_rows = []
+    notes = []
+    any_ok = False
+
+    for url in C.LIDL_EXPORT_URLS:
+        try:
+            blob = _fetch_bytes(url, timeout=C.LIDL_HTTP_TIMEOUT)
+            offers, regulars = parse_lidl(blob)
+            promo_offers.extend(offers)
+            regular_rows.extend(regulars)
+            any_ok = True
+        except Exception as e:
+            notes.append(f"{url}: {type(e).__name__}: {e}")
+
+    if not any_ok:
+        return [], [], {
+            "source": source, "ok": False, "n": 0, "note": "; ".join(notes) or "all URLs failed",
+        }
+
+    # De-dupe across the two lists the same way as across stores: lowest promo price
+    # / lowest regular price per product code wins.
+    merged_promo = {}
+    for offer in promo_offers:
+        code = offer["product_code"]
+        prev = merged_promo.get(code)
+        if prev is None or offer["price_eur"] < prev["price_eur"]:
+            merged_promo[code] = offer
+    promo_offers = list(merged_promo.values())
+
+    merged_regular = {}
+    for row in regular_rows:
+        code = row["product_code"]
+        prev = merged_regular.get(code)
+        if prev is None or row["price_eur"] < prev["price_eur"]:
+            merged_regular[code] = row
+    regular_rows = list(merged_regular.values())
+
+    distinct_products = len({r["product_code"] for r in regular_rows} | {o["product_code"] for o in promo_offers})
+    all_notes = notes + ([_min_expected_note(source, distinct_products)] if _min_expected_note(source, distinct_products) else [])
+    note = "; ".join(all_notes)
+    return promo_offers, regular_rows, {
+        "source": source, "ok": True, "n": distinct_products, "note": note,
+    }
+
+
 def harvest():
-    """-> (all_offers, reports). The assembler. NEVER raises."""
+    """-> (all_offers, reports, regular_rows). The assembler. NEVER raises."""
     all_offers = []
     reports = []
 
@@ -226,7 +399,11 @@ def harvest():
         all_offers.extend(offers)
         reports.append(report)
 
+    lidl_promo, regular_rows, lidl_report = fetch_lidl()
+    all_offers.extend(lidl_promo)
+    reports.append(lidl_report)
+
     for offer in all_offers:
         match.annotate(offer)
 
-    return all_offers, reports
+    return all_offers, reports, regular_rows

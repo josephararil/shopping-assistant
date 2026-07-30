@@ -163,17 +163,27 @@ def _raising_parse_mydealz(xml_text):
     raise ValueError("layout changed")
 
 
+def _raiser_bytes(url, timeout=25):
+    raise ConnectionError("lidl unreachable")
+
+
+_orig_fetch_bytes = sources._fetch_bytes
+
 sources._fetch_text = _fake_fetch_text
 sources.parse_mydealz = _raising_parse_mydealz
+sources._fetch_bytes = _raiser_bytes
 
-all_offers, reports = sources.harvest()
+all_offers, reports, regular_rows = sources.harvest()
 by_source = {r["source"]: r for r in reports}
 chk("harvest survives mydealz parse raising — ccc offers present", len(all_offers) == 20, len(all_offers))
 chk("harvest reports mydealz ok=False", by_source["mydealz"]["ok"] is False, by_source["mydealz"])
 chk("harvest reports ccc ok=True", by_source["ccc"]["ok"] is True, by_source["ccc"])
+chk("harvest regular_rows == [] when lidl fails entirely", regular_rows == [], regular_rows)
+chk("harvest reports lidl ok=False when both URLs fail", by_source["lidl"]["ok"] is False, by_source["lidl"])
 
 sources.parse_mydealz = _orig_parse_mydealz
 sources._fetch_text = _orig_fetch_text2
+sources._fetch_bytes = _orig_fetch_bytes
 
 
 # ── fewer-than-MIN_EXPECTED_OFFERS still ok=True but with a loud warning ───
@@ -214,13 +224,269 @@ def _fake_fetch_text_both(url, timeout=25):
 
 
 sources._fetch_text = _fake_fetch_text_both
-all_offers, reports = sources.harvest()
+sources._fetch_bytes = _raiser_bytes  # lidl not under test here — keep it off the network
+all_offers, reports, regular_rows = sources.harvest()
 sources._fetch_text = _orig_fetch_text2
+sources._fetch_bytes = _orig_fetch_bytes
 
 missing_key_offers = [o for o in all_offers if not ALL_KEYS.issubset(o.keys())]
 chk("harvest offers all carry 11 contract keys + 7 annotate keys",
     missing_key_offers == [], f"{len(missing_key_offers)} offers missing keys")
 chk("harvest returns offers for both sources", len(all_offers) == 20 + 30, len(all_offers))
+
+
+# ── Lidl BG statutory price export ──────────────────────────────────────────
+
+import zipfile
+from io import BytesIO
+
+LIDL_FIXTURE = open("fixtures/lidl_plovdiv.xlsx", "rb").read()
+
+lidl_promo, lidl_regular = sources.parse_lidl(LIDL_FIXTURE)
+
+chk("parse_lidl fixture yields 26 promo offers", len(lidl_promo) == 26, len(lidl_promo))
+chk("parse_lidl fixture yields 226 distinct regular products",
+    len(lidl_regular) == 226, len(lidl_regular))
+
+# The four verified Plovdiv promo pairs (Цена -> Цена в промоция), claimed_discount to 2dp.
+VERIFIED_PAIRS = {
+    "Домати на клонка на кг": (1.78, 0.99),
+    "Железница Кашкавал от краве мляко": (9.71, 7.75),
+    "Немско масло": (2.49, 1.45),
+    "Nashe Selo Краве сирене": (7.15, 5.99),
+}
+lidl_promo_by_name = {o["name"]: o for o in lidl_promo}
+for name, (was, now) in VERIFIED_PAIRS.items():
+    o = lidl_promo_by_name.get(name)
+    chk(f"lidl promo present: {name}", o is not None, name)
+    if o is not None:
+        chk(f"lidl promo price_eur: {name}", o["price_eur"] == now, o["price_eur"])
+        chk(f"lidl promo was_price_eur: {name}", o["was_price_eur"] == was, o["was_price_eur"])
+        expected_discount = round(1 - now / was, 2)
+        chk(f"lidl claimed_discount to 2dp: {name}",
+            round(o["claimed_discount"], 2) == expected_discount, o["claimed_discount"])
+
+# Contract shape: all 11 keys, source == "lidl", retailer == "Lidl", no validity date.
+LIDL_CONTRACT_KEYS = {
+    "source", "retailer", "name", "price_eur", "was_price_eur", "claimed_discount",
+    "valid_until", "url", "heat", "category_hint", "raw",
+}
+bad_offers = [o for o in lidl_promo if not LIDL_CONTRACT_KEYS.issubset(o.keys())]
+chk("lidl promo offers all carry the 11 contract keys", bad_offers == [], len(bad_offers))
+chk("lidl promo offers all source=='lidl'", all(o["source"] == "lidl" for o in lidl_promo))
+chk("lidl promo offers all retailer=='Lidl'", all(o["retailer"] == "Lidl" for o in lidl_promo))
+chk("lidl promo offers all valid_until is None — export carries no validity date",
+    all(o["valid_until"] is None for o in lidl_promo))
+
+# No regular row is an offer shape, and no promo price ever appears in regular_rows —
+# check on a product code that genuinely appears in BOTH series.
+regular_by_code = {r["product_code"]: r for r in lidl_regular}
+overlap_codes = [o["product_code"] for o in lidl_promo if o["product_code"] in regular_by_code]
+chk("at least one product appears in both promo and regular series (fixture sanity)",
+    len(overlap_codes) > 0, len(overlap_codes))
+for o in lidl_promo:
+    code = o["product_code"]
+    reg = regular_by_code.get(code)
+    if reg is not None:
+        chk(f"lidl regular price for {code} is the shelf price, not the promo price",
+            reg["price_eur"] != o["price_eur"], (reg["price_eur"], o["price_eur"]))
+        chk(f"lidl regular price for {code} equals was_price_eur",
+            reg["price_eur"] == o["was_price_eur"], (reg["price_eur"], o["was_price_eur"]))
+chk("no regular row carries the 11-key offer shape",
+    all("source" not in r for r in lidl_regular))
+
+
+def _build_xlsx(row_xmls):
+    """Minimal xlsx blob matching the real export's shape: empty sharedStrings,
+    inlineStr cells, columns B-H. Used to test edge cases the committed fixture
+    doesn't happen to contain."""
+    header = (
+        '<row r="1">'
+        '<c r="B1" t="inlineStr"><is><t>Код</t></is></c>'
+        '<c r="C1" t="inlineStr"><is><t>Търговски обект</t></is></c>'
+        '<c r="D1" t="inlineStr"><is><t>Наименование на продукта</t></is></c>'
+        '<c r="E1" t="inlineStr"><is><t>Код на продукта</t></is></c>'
+        '<c r="F1" t="inlineStr"><is><t>Категория</t></is></c>'
+        '<c r="G1" t="inlineStr"><is><t>Цена</t></is></c>'
+        '<c r="H1" t="inlineStr"><is><t>Цена в промоция</t></is></c>'
+        "</row>"
+    )
+    sheet_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        "<sheetData>" + header + "".join(row_xmls) + "</sheetData></worksheet>"
+    )
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "xl/sharedStrings.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<sst count="0" uniqueCount="0" '
+            'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"/>',
+        )
+        z.writestr("xl/worksheets/sheet1.xml", sheet_xml)
+    return buf.getvalue()
+
+
+# ── column-letter mapping survives an omitted trailing cell (guard the exact bug) ──
+# Row 2: H (Цена в промоция) is OMITTED entirely — not present, not empty — because
+# it is the trailing empty cell. Positional indexing would read only 6 cells and
+# silently treat "Категория" as if it were "Цена", or similar off-by-one shifts.
+# Row 3: both G and H are omitted (two trailing empty cells).
+SYNTHETIC_ROW_H_OMITTED = (
+    '<row r="2">'
+    '<c r="B2" t="inlineStr"><is><t>11111</t></is></c>'
+    '<c r="C2" t="inlineStr"><is><t>999 - Пловдив/тест 1</t></is></c>'
+    '<c r="D2" t="inlineStr"><is><t>Тестов продукт А</t></is></c>'
+    '<c r="E2" t="inlineStr"><is><t>ТЕСТ001</t></is></c>'
+    '<c r="F2" t="inlineStr"><is><t>42</t></is></c>'
+    '<c r="G2" t="inlineStr"><is><t>5.50</t></is></c>'
+    "</row>"
+)
+SYNTHETIC_ROW_G_H_OMITTED = (
+    '<row r="3">'
+    '<c r="B3" t="inlineStr"><is><t>22222</t></is></c>'
+    '<c r="C3" t="inlineStr"><is><t>999 - Пловдив/тест 1</t></is></c>'
+    '<c r="D3" t="inlineStr"><is><t>Тестов продукт Б</t></is></c>'
+    '<c r="E3" t="inlineStr"><is><t>ТЕСТ002</t></is></c>'
+    '<c r="F3" t="inlineStr"><is><t>7</t></is></c>'
+    "</row>"
+)
+synthetic_blob = _build_xlsx([SYNTHETIC_ROW_H_OMITTED, SYNTHETIC_ROW_G_H_OMITTED])
+synthetic_rows = sources._parse_xlsx_rows(synthetic_blob)
+
+chk("_parse_xlsx_rows skips the header and returns 2 data rows",
+    len(synthetic_rows) == 2, len(synthetic_rows))
+
+r2 = synthetic_rows[0]
+chk("omitted-H row: F (Категория) maps to F, not shifted", r2.get("F") == "42", r2.get("F"))
+chk("omitted-H row: G (Цена) maps to G, not shifted into H's place", r2.get("G") == "5.50", r2.get("G"))
+chk("omitted-H row: H is absent or blank, never '42' or '5.50'",
+    r2.get("H", "") == "", r2.get("H"))
+
+r3 = synthetic_rows[1]
+chk("omitted-G-and-H row: F (Категория) still maps to F", r3.get("F") == "7", r3.get("F"))
+chk("omitted-G-and-H row: G is absent or blank, not shifted from H's non-existence",
+    r3.get("G", "") == "", r3.get("G"))
+
+# Same synthetic data run through parse_lidl end to end: the H-omitted row is a
+# non-promo product and must land only in regular_rows, never as an offer.
+_orig_store_filter = C.LIDL_STORE_FILTER
+C.LIDL_STORE_FILTER = "Пловдив"
+synth_promo, synth_regular = sources.parse_lidl(synthetic_blob)
+C.LIDL_STORE_FILTER = _orig_store_filter
+
+chk("synthetic omitted-cell data: no promo offers (neither row has a promo price)",
+    synth_promo == [], synth_promo)
+chk("synthetic omitted-cell data: 1 regular row (only ТЕСТ001 has a Цена)",
+    len(synth_regular) == 1, synth_regular)
+if synth_regular:
+    chk("synthetic omitted-cell data: regular price read from the correct column (5.50)",
+        synth_regular[0]["price_eur"] == 5.50, synth_regular[0]["price_eur"])
+
+
+# ── inline strings read correctly despite an EMPTY sharedStrings.xml ────────
+chk("lidl fixture: a Cyrillic product name reads correctly (not blank) "
+    "despite sharedStrings count=\"0\"",
+    "Домати" in lidl_promo_by_name.get("Домати на клонка на кг", {}).get("name", ""),
+    lidl_promo_by_name.get("Домати на клонка на кг"))
+
+
+# ── de-dupe keeps the LOWEST promo price across stores ──────────────────────
+DEDUPE_ROW_STORE_A = (
+    '<row r="2">'
+    '<c r="B2" t="inlineStr"><is><t>33333</t></is></c>'
+    '<c r="C2" t="inlineStr"><is><t>100 - Пловдив/адрес А</t></is></c>'
+    '<c r="D2" t="inlineStr"><is><t>Дедуп продукт</t></is></c>'
+    '<c r="E2" t="inlineStr"><is><t>ДЕДУП01</t></is></c>'
+    '<c r="F2" t="inlineStr"><is><t>3</t></is></c>'
+    '<c r="G2" t="inlineStr"><is><t>4.00</t></is></c>'
+    '<c r="H2" t="inlineStr"><is><t>2.50</t></is></c>'
+    "</row>"
+)
+DEDUPE_ROW_STORE_B = (
+    '<row r="3">'
+    '<c r="B3" t="inlineStr"><is><t>44444</t></is></c>'
+    '<c r="C3" t="inlineStr"><is><t>200 - Пловдив/адрес Б</t></is></c>'
+    '<c r="D3" t="inlineStr"><is><t>Дедуп продукт</t></is></c>'
+    '<c r="E3" t="inlineStr"><is><t>ДЕДУП01</t></is></c>'
+    '<c r="F3" t="inlineStr"><is><t>3</t></is></c>'
+    '<c r="G3" t="inlineStr"><is><t>4.00</t></is></c>'
+    '<c r="H3" t="inlineStr"><is><t>1.99</t></is></c>'
+    "</row>"
+)
+dedupe_blob = _build_xlsx([DEDUPE_ROW_STORE_A, DEDUPE_ROW_STORE_B])
+C.LIDL_STORE_FILTER = "Пловдив"
+dedupe_promo, dedupe_regular = sources.parse_lidl(dedupe_blob)
+C.LIDL_STORE_FILTER = _orig_store_filter
+
+chk("de-dupe: same product across 2 stores collapses to 1 promo offer",
+    len(dedupe_promo) == 1, len(dedupe_promo))
+if dedupe_promo:
+    chk("de-dupe: keeps the LOWEST promo price (1.99, not 2.50)",
+        dedupe_promo[0]["price_eur"] == 1.99, dedupe_promo[0]["price_eur"])
+
+
+# ── _fetch_bytes monkeypatched to raise -> fetch_lidl returns ([], [], ok=False) ──
+
+def _lidl_raiser(url, timeout=180):
+    raise ConnectionError("lidl.bg unreachable")
+
+
+sources._fetch_bytes = _lidl_raiser
+lp, lr, lreport = sources.fetch_lidl()
+chk("fetch_lidl with both URLs raising returns []", lp == [] and lr == [], (lp, lr))
+chk("fetch_lidl with both URLs raising: ok is False", lreport["ok"] is False, lreport)
+chk("fetch_lidl with both URLs raising: source is 'lidl'", lreport["source"] == "lidl", lreport)
+sources._fetch_bytes = _orig_fetch_bytes
+
+
+# ── one Lidl URL failing while the other succeeds still yields data ─────────
+
+def _lidl_one_fails(url, timeout=180):
+    if url == C.LIDL_EXPORT_URLS[0]:
+        raise ConnectionError("first list down")
+    return LIDL_FIXTURE
+
+
+sources._fetch_bytes = _lidl_one_fails
+lp2, lr2, lreport2 = sources.fetch_lidl()
+chk("fetch_lidl: one URL failing still yields promo offers", len(lp2) == 26, len(lp2))
+chk("fetch_lidl: one URL failing still yields regular rows", len(lr2) == 226, len(lr2))
+chk("fetch_lidl: one URL failing -> ok stays True (partial success)", lreport2["ok"] is True, lreport2)
+chk("fetch_lidl: one URL failing is noted", "first list down" in lreport2["note"], lreport2["note"])
+sources._fetch_bytes = _orig_fetch_bytes
+
+
+# ── below-threshold distinct-product count -> ok=True + warning ─────────────
+
+sources._fetch_bytes = lambda url, timeout=180: LIDL_FIXTURE
+lp3, lr3, lreport3 = sources.fetch_lidl()
+chk("fetch_lidl below MIN_EXPECTED_OFFERS['lidl'] still ok=True", lreport3["ok"] is True, lreport3)
+chk("fetch_lidl below MIN_EXPECTED_OFFERS['lidl'] warns in note",
+    "WARNING" in lreport3["note"] and str(C.MIN_EXPECTED_OFFERS["lidl"]) in lreport3["note"],
+    lreport3["note"])
+sources._fetch_bytes = _orig_fetch_bytes
+
+
+# ── harvest() with a healthy lidl source: promo joins all_offers, report joins
+#    reports, regular_rows is the third element ──────────────────────────────
+
+sources._fetch_text = _fake_fetch_text_both
+sources._fetch_bytes = lambda url, timeout=180: LIDL_FIXTURE
+all_offers_lidl, reports_lidl, regular_rows_lidl = sources.harvest()
+sources._fetch_text = _orig_fetch_text2
+sources._fetch_bytes = _orig_fetch_bytes
+
+by_source_lidl = {r["source"]: r for r in reports_lidl}
+chk("harvest with healthy lidl: all_offers includes ccc + mydealz + 26 lidl promo",
+    len(all_offers_lidl) == 20 + 30 + 26, len(all_offers_lidl))
+chk("harvest with healthy lidl: reports includes a lidl entry",
+    "lidl" in by_source_lidl, by_source_lidl.keys())
+chk("harvest with healthy lidl: regular_rows_lidl is the 226 distinct products",
+    len(regular_rows_lidl) == 226, len(regular_rows_lidl))
+chk("harvest with healthy lidl: lidl offers annotated (carry sku_class key)",
+    all("sku_class" in o for o in all_offers_lidl if o["source"] == "lidl"))
 
 
 # ── no broshura anywhere in sources.py ──────────────────────────────────────
