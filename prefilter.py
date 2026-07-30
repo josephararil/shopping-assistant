@@ -1,9 +1,13 @@
 """prefilter.py — Stage 2, the cost governor.
 
-broshura.bg alone yields ~1552 offers a week. Feeding that to an LLM is unaffordable
-and unfocused, so this module cuts the raw offer set down to <= sum(C.SOURCE_CAPS)
-(68 today) BEFORE any LLM sees anything. Every rejection is recorded with a reason,
-because the weekly email's reject footer renders those reasons with real numbers.
+A single leaflet aggregator can yield well over a thousand offers a week. Feeding that
+to an LLM is unaffordable and unfocused, so this module cuts the raw offer set down to
+<= sum(C.SOURCE_CAPS) BEFORE any LLM sees anything. Every rejection is recorded with a
+reason, because the weekly email's reject footer renders those reasons with real numbers.
+
+The cap is deliberately stated as sum(C.SOURCE_CAPS) and never as a literal: the caps
+were re-split once already (broshura out, llm_discover up) and every prose copy of the
+old total silently went stale.
 
 Pure, offline, stdlib only. See the scratchpad CONTRACT.md and config.py's module
 docstring (lines 12-44) for the offer/candidate shape this binds to.

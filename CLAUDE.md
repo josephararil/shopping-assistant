@@ -18,7 +18,7 @@ side or the other, and each records a decision a future implementer will otherwi
 ```
 Stage 0 · HARVEST          deterministic   sources.py    ccc + mydealz RSS
 Stage 1 · NORMALISE+MATCH  deterministic   match.py      Python does ALL arithmetic
-Stage 2 · PREFILTER        deterministic   prefilter.py  -> <=46 candidates  [COST GOVERNOR]
+Stage 2 · PREFILTER        deterministic   prefilter.py  -> <=sum(SOURCE_CAPS)  [COST GOVERNOR]
 Stage 3 · DISCOVER         LLM #1 (search) the consumable source; Metro + silabg
 Stage 4 · AUDIT            LLM #2 (batched, no search)   the procurement audit
 Stage 5 · CORROBORATE      LLM #3 (search, gated, <=6)   only leads missing their evidence bar
@@ -250,9 +250,12 @@ python test_match.py && python test_prefilter.py && python test_history.py \
   && python test_verdicts.py && python test_sources.py && python test_stub.py
 ```
 
-All six run offline in under a second. CI gates the weekly run on them, so a parser broken by a
-site layout change fails loudly instead of harvesting nothing and producing a digest that merely
-looks like a quiet week.
+All six run offline in under a second. `weekly.yml` runs them as a separate `tests` job that gates
+both the weekly pipeline (`needs: tests`) and every pull request, so a parser broken by a site
+layout change fails loudly instead of harvesting nothing and producing a digest that merely looks
+like a quiet week. The pipeline job itself is skipped on `pull_request` — it spends LLM tokens,
+emails the user and commits state, none of which a PR should do. **Add a new suite to that job's
+step list, or it never runs in CI.**
 
 - `python find_deals.py --dry-run` — Stages 0–2 against the live web, exits before any LLM call.
 - `SHOP_HUNTER_DRY_RUN=1 python find_deals.py` — every stage, writes state, sends no email and

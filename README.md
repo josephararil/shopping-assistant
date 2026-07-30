@@ -20,7 +20,7 @@ veto a lead, and never divides. A model that reads "100 g" and emits "€1.09/kg
 ```
 Stage 0 · HARVEST          deterministic   sources.py    ccc + mydealz RSS + Lidl BG statutory export
 Stage 1 · NORMALISE+MATCH  deterministic   match.py      Python does ALL arithmetic
-Stage 2 · PREFILTER        deterministic   prefilter.py  -> <=46 candidates  [COST GOVERNOR]
+Stage 2 · PREFILTER        deterministic   prefilter.py  -> <=sum(SOURCE_CAPS)  [COST GOVERNOR]
 Stage 3 · DISCOVER         LLM #1 (search) the consumable source; Metro + silabg
 Stage 4 · AUDIT            LLM #2 (batched, no search)   the procurement audit
 Stage 5 · CORROBORATE      LLM #3 (search, gated, <=6)   only leads missing their evidence bar
