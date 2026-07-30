@@ -71,6 +71,14 @@ The pipeline may nudge a par by at most `PAR_DRIFT_MAX` (0.15), from the **regul
 A sustained gap surfaces as a par-review line in the email — a human decision, not an automatic
 one. Removing the clamp reintroduces silent par erosion.
 
+The clamp is why `find_deals.par_review_lines` must exist and must stay wired: a par set 40% away
+from what shops genuinely charge is clamped to 15% and then used **forever**, self-consistently,
+with nothing erroring and the user never learning their number is wrong. `PAR_REVIEW_MIN_GAP`
+(0.20) is the reporting threshold, and the line reports without changing anything. It reads the
+**regular series only** — a gap measured against promo prices is just the discount, and surfacing
+it would train the user to chase their par downhill every week, which is failure mode #1 wearing
+a helpful face. In weeks 1–4 this is the highest-value line in the digest.
+
 ### `ref_evidence` scores REFERENCE credibility, never OFFER credibility
 Offer credibility is near-constant across these feeds. **The "before" price is where marketing
 nonsense lives.** A lone `retailer_claim` at 0.2 against bars of 1.0 / 2.0 / 2.5 is
@@ -158,9 +166,13 @@ indistinguishable from a quiet week; it falls back to `DEFAULT_SOURCE_CAP` with 
 
 ### No new dependencies
 `requirements.txt` is `requests` + `python-dotenv`. RSS via stdlib `xml.etree.ElementTree`, HTML
-via `re` + `html.unescape`. Tests are hand-rolled `chk(name, cond, detail)` + `sys.exit(1)`.
-**No pytest, no bs4, no feedparser.** No test touches the network — every parser test reads a
-committed fixture from `fixtures/`.
+via `re` + `html.unescape`, `.xlsx` via stdlib `zipfile` + a cell scan. Tests are hand-rolled
+`chk(name, cond, detail)` + `sys.exit(1)`. **No pytest, no bs4, no feedparser, no openpyxl, no
+pandas.** No test touches the network — every parser test reads a committed fixture from
+`fixtures/`, including reduced-but-structurally-real copies of both Lidl exports. A reduced
+fixture must keep the original's internal quirks (inline strings, empty sharedStrings, omitted
+trailing cells, its own real header row); a tidy synthetic file stops testing the thing that
+breaks.
 
 ## Data sources
 
@@ -168,10 +180,40 @@ committed fixture from `fixtures/`.
 |---|---|
 | `de.camelcamelcamel.com/top_drops/feed` | ✅ RSS works (HTML pages are 403 Cloudflare). 20 items |
 | `www.mydealz.de/rss/hot` | ✅ Works. 30 items, `pepper:merchant` price + `106°` heat |
+| `lidl.bg` statutory export (2 × .xlsx) | ✅ Works. 709 Plovdiv products, 26 promos, and the **only non-promo shelf price in the system** |
 | Stage-3 LLM search | The **primary consumable source** — see below |
 | `broshura.bg` | ❌ **Ruled out. Do not re-add.** See below |
 | `silabg.com/promocii` | ❌ 404. `/promo` is a gift-with-purchase threshold list, not discounts |
 | Metro Bulgaria | ⚠ No feed; covered by Stage 3 |
+
+**The Lidl export is the only source that can populate `regular`.** Everything else here is a
+promotions feed, so `Цена` on the statutory export is the single genuine non-promo shelf price
+the pipeline ever sees. Without it the 1.0-weight `regular_median` leg and `effective_par` stay
+dead until corroboration slowly builds a history. It contributes ~26 regular observations per
+run, which brings the leg live in about three weeks rather than twelve.
+
+Parsing it correctly is load-bearing, and the way it breaks is silent:
+
+- **.xlsx is a ZIP of XML.** stdlib `zipfile` only — no openpyxl, no pandas.
+- **Cells are `t="inlineStr"` and `xl/sharedStrings.xml` is EMPTY (`count="0"`).** A
+  shared-strings reader returns every cell blank.
+- **Columns are resolved through the HEADER ROW by exact name, never by position.** The two
+  export URLs have *entirely different schemas*: in `ExportSecondList` the first file's letter
+  map reads `Категория` (a category **number**) as the regular price and `Код на продукта` as
+  the promo price — `{'G':'38','H':'0001229'}` became a €1229 promo, was €38. That fabricated 59
+  offers and 59 rows in the `regular` series, and *disabled its own safety net*: the garbage
+  inflated the distinct-product count past `MIN_EXPECTED_OFFERS`, so nothing warned. A missing
+  column now RAISES rather than falling back to letters — a layout change must surface as a
+  degraded source, never as plausible numbers.
+- **Header matching is exact, never substring.** `Цена` is a prefix of `Цена в промоция`, so a
+  loose match hands back the promo column as the regular price and fabricates a 0% discount on
+  every row. The real files survive substring matching only by an accident of capitalisation, so
+  the property is pinned on synthetic headers in `test_sources.py`.
+- Only the second schema carries `Срок на намаление до`, so only its rows get a `valid_until`.
+  The first file has no such column and its rows stay `None` — do not invent one.
+- The retailer's own `Процентното изменение` column is **never read**; Python computes
+  `claimed_discount`. It is used only as an independent test cross-check that the right two
+  price columns were picked rather than merely self-consistent wrong ones.
 
 **Why there is no broshura scraper.** The original plan specified `broshura.bg/oferti` as ~1552
 product-level offers carrying name + EUR + BGN + retailer + `Важи до`. That does not reproduce.
