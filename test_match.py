@@ -57,12 +57,12 @@ chk("calibre guard does not break a model number",
 # Lidl's statutory export declares `Нетно количество` per row. It is the manufacturer's
 # own figure, so it beats any guess at what a product title means — and it settles both
 # of the parse failures above with authority rather than with a regex.
-beans = {"name": "Боб насипен 200-220/100 г", "price_eur": 2.04, "net_qty": 1.0}
-match.annotate(beans)
-chk("net_qty overrides a name parse: beans are €2.04/kg, not €20.40/kg",
-    (beans["qty"], beans["unit"], beans["unit_price_eur"]) == (1.0, "kg", 2.04), beans)
+chickpeas = {"name": "Нахут насипен 200-220/100 г", "price_eur": 2.04, "net_qty": 1.0}
+match.annotate(chickpeas)
+chk("net_qty overrides a name parse: chickpeas are €2.04/kg, not €20.40/kg",
+    (chickpeas["qty"], chickpeas["unit"], chickpeas["unit_price_eur"]) == (1.0, "kg", 2.04), chickpeas)
 chk("a net_qty row is never pending_qty — the audit must not invent a divisor",
-    beans["pending_qty"] is False)
+    chickpeas["pending_qty"] is False)
 
 drained = {"name": "Боб кидни (ОНТ 290g)", "price_eur": 1.26, "net_qty": 0.42}
 match.annotate(drained)

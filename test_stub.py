@@ -21,8 +21,9 @@ Fixtures (see OFFERS below):
   - A Lidl REGULAR row for the same salmon sku -> recorded into the `regular` series with
     source="lidl_regular"; the salmon PROMO row above must never reach `regular`.
   - `mydealz` source report is forced to ok=False -> exercises the FAILED-source line.
-  - `catalog_health.json` is seeded with runs_since_matched=7 for food.lentils, which
-    is not matched this run -> becomes stale (>=8) -> exercises the catalog-health line.
+  - `catalog_health.json` is seeded with runs_since_matched=7 for food.beans_tinned,
+    which is not matched this run -> becomes stale (>=8) -> exercises the catalog-health
+    line.
 
 Run: python test_stub.py
 """
@@ -42,7 +43,7 @@ os.chdir(sandbox)
 # Seed catalog_health so ONE known sku is one run away from CATALOG_STALE_RUNS (8) and
 # will not be matched this run -> becomes stale and renders a catalog-health line.
 with open("state/catalog_health.json", "w", encoding="utf-8") as f:
-    json.dump({"skus": {"food.lentils": {"runs_since_matched": 7, "last_matched": "2026-06-01"}}}, f)
+    json.dump({"skus": {"food.beans_tinned": {"runs_since_matched": 7, "last_matched": "2026-06-01"}}}, f)
 
 # Seed price_history for TWO things at once:
 #
@@ -307,7 +308,7 @@ try:
     print("Source report includes a FAILED source [OK]")
 
     # Catalog health line for the seeded stale sku.
-    assert "food.lentils" in html_body and "no match in" in html_body, \
+    assert "food.beans_tinned" in html_body and "no match in" in html_body, \
         "catalog-health line missing"
     print("Catalog health line present [OK]")
 

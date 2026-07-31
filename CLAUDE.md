@@ -516,6 +516,72 @@ scraper on the strength of the original claim.
 Consequence: consumables have no deterministic source. `MAX_GAP_QUERIES` is 40 so Stage 3 covers
 the whole watchlist weekly, and `llm_discover`'s cap carries most of the budget.
 
+### PR-D: the pre-launch calibration interview (2026-08-01) — 28 skus, tilted ranking
+
+Before letting the pipeline run for real, every `bulk_qty` and the `STOCKUP_MIN_SAVING_EUR`
+floor were walked against the user's actual buying behaviour, sku by sku, rather than left as
+launch-time guesses. Two patterns fell out of that interview and now govern how `bulk_qty` gets
+set for any future sku:
+
+**Tinned/jarred goods all share one rule: 10 units is the normal restock, 25+ is the arbitrage
+buy.** The user never buys a single tin — always ~10 — and would go to ~25-30 on a real
+discount, to bank the price *and* stop worrying about the item for months. This is now uniform
+across every tinned/jarred sku: `tomatoes_tinned` (10.0), `peas_tinned` (10.0),
+`chickpeas_tinned` (10.0), `sweetcorn_tinned` (8.5), `tuna_tinned` (3.75, smaller tin), and
+`lutenitsa` (8.5, jar size varies so an average jar was assumed). A new sku, **`food.beans_tinned`**
+(kidney/black beans), was added under the same rule — the user buys these canned, never dried,
+and `food.beans_dried` (which nobody actually buys) was deleted rather than repurposed, the same
+way `food.flour` was cut in PR-B.
+
+**Freezer meat has a real ceiling the old numbers didn't reflect.** `chicken_breast` and
+`pork_meat` both dropped 6.0/8.0 -> **4.0 kg**: the user is explicit that freezer space (already
+committed to `frozen_vegetables`) caps a single meat stock-up at 4 kg regardless of discount
+depth, no matter how good the deal. `frozen_vegetables` itself dropped 22.5 -> **20.0 kg** (8 x
+2.5 kg bags, not 9 — the user's real range is 4-8 bags per trip). `supp.whey_protein` dropped
+20 -> **5.0 kg**: the user's real purchase size is price-tiered (5 kg at €22-25/kg, 2.7 kg at
+€25-30/kg, only 20-30 kg for an exceptional branded deal under €22/kg) but the pipeline has one
+`bulk_qty` per sku with no price- or brand-branching, so 5 kg was chosen as the honest *typical*
+case rather than the exceptional one — `target_eur=25` already gates Strong Buy independently of
+this number, so the change doesn't weaken that protection.
+
+**`food.lentils` and `food.yoghurt` were deleted, not tuned.** Both were mathematically unable
+to clear `STOCKUP_MIN_SAVING_EUR` even at a 94-98% discount, and the user confirmed neither is
+worth tracking at any bulk_qty they'd realistically hold (lentils: rarely eaten; yoghurt: no
+realistic discount ever gets there). `food.cottage_cheese`'s `bulk_qty` raised 1.5 -> 6.0 instead
+of being deleted, since the user does buy more than the old number assumed. **Net: 30 -> 28 skus**
+(three deleted, one added).
+
+**A stale-state trap surfaced during this pass, not a new bug filed against it.** The Section-2
+floor table (given at the start of the interview as "measured against the committed fixtures")
+listed `food.pork_meat`'s shelf p25 as €3.47/kg. The user's own brochure read (~€8/kg for a
+kontrafile cut) contradicted it, and checking `state/price_history.json` directly confirmed the
+user was right: the `regular` series' surviving `stats` block shows median €7.83/kg, while the
+`regular` observation array itself was empty — a leftover inconsistency from pre-rewrite state
+(the same stale state Section 4 already flags for overwrite on the next real run). The €3.47
+figure was never reproducible from either committed Lidl fixture. Lesson for future calibration:
+a number presented as "measured" is a claim about a specific state file at a specific time, and
+is only as good as that file — check it against the live source before accepting a floor
+decision built on it, exactly as CLAUDE.md's own validate-the-detector guidance says.
+
+**Ranking retilted 40/40 -> 25/55 (discount/stockup).** The user's stated goal — "this is a
+stock-up digest, not a discount digest" — was in tension with equal weighting: a 50%-off item
+with a small real saving (e.g. a €9.79 olive-oil saving) was outscoring a 25%-off item moving
+similar money, purely on the size of the percentage. `RANK_DISCOUNT_WEIGHT` (40->25) and
+`RANK_STOCKUP_WEIGHT` (40->55) now bias the Top-5 ordering toward real money moved rather than
+headline percentage. This changes ranking only — no verdict gate moved, so nothing that was
+Strong Buy or Fair before is now Skip or vice versa. Every pinned `rank_score` number in
+`test_verdicts.py` was recomputed against the new weights, not hand-guessed.
+
+**`HOUSEHOLD_CONTEXT` was rewritten** to mention the dedicated freezer/storage room explicitly,
+and to add the household's actual eating pattern (vegetables and lean protein, sous-vide or
+oven, never fried) — both feed `fit_score` directly and were previously absent, so the audit was
+judging fit without knowing either.
+
+Every threshold in `## Verdict gates`, `Evidence bar`, `Reference / baseline`, `Anti-spam`, and
+`Cost / volume knobs` was walked and deliberately left unchanged in this pass — see this
+section's git history for the reasoning recorded at the time, group by group. `MIN_EVIDENCE_FAIR`
+and `MIN_EVIDENCE_STRONG` were explicitly reconfirmed as off-limits per the rule above.
+
 ## Calibration
 
 Target: **2–6 Strong Buys and 8–20 Fairs per week.** Weeks 1–4 are calibration, not production —

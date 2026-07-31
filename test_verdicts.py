@@ -236,7 +236,7 @@ shelf_long = C.rank_score(0.25, 60.0, C.VERDICT_STRONG, False, shelf_life_days=5
 chk("rank_score: 21-day shelf life scores strictly below 550-day at equal discount/saving",
     shelf_short < shelf_long, f"21d={shelf_short} 550d={shelf_long}")
 chk("rank_score: shelf-life monotonic case matches the pinned numbers",
-    (shelf_short, shelf_long) == (42.33, 60.0), (shelf_short, shelf_long))
+    (shelf_short, shelf_long) == (35.71, 60.0), (shelf_short, shelf_long))
 
 
 # ── PR-C: the seven-row ranking table ─────────────────────────────────────────
@@ -247,13 +247,13 @@ chk("rank_score: shelf-life monotonic case matches the pinned numbers",
 # discount and saving are computed in PYTHON, never asked of the LLM.
 _ranking_rows = [
     # name,           ref,    unit,   bulk_qty, shelf_life, target_eur, gate_fails, rank
-    ("whey target hit", 30.00, 25.00, 20,   550, 25.00, False, 66.67),
-    ("olive_oil drum",  12.00,  9.00,  5,   730, None,  False, 45.00),
-    ("chicken_breast",   7.00,  5.25, 10,   120, None,  False, 43.89),
-    ("frozen_veg (floor FAILS)", 3.20, 2.40, 10, 365, None, True, 22.67),
-    ("yoghurt",          3.00,  2.25,  6,    21, None,  True, 20.18),
-    ("rice",             2.50,  2.00, 10,   540, None,  True, 17.67),
-    ("toilet_paper",     0.3825, 0.306, 40, 730, None,  True, 17.02),
+    ("whey target hit", 30.00, 25.00, 20,   550, 25.00, False, 74.17),
+    ("olive_oil drum",  12.00,  9.00,  5,   730, None,  False, 39.38),
+    ("chicken_breast",   7.00,  5.25, 10,   120, None,  False, 37.85),
+    ("frozen_veg (floor FAILS)", 3.20, 2.40, 10, 365, None, True, 16.17),
+    ("yoghurt",          3.00,  2.25,  6,    21, None,  True, 12.74),
+    ("rice",             2.50,  2.00, 10,   540, None,  True, 12.29),
+    ("toilet_paper",     0.3825, 0.306, 40, 730, None,  True, 11.4),
 ]
 for name, ref, unit, bulk_qty, shelf_life, target_eur, gate_fails, expected_rank in _ranking_rows:
     discount = (ref - unit) / ref
@@ -268,13 +268,13 @@ for name, ref, unit, bulk_qty, shelf_life, target_eur, gate_fails, expected_rank
 
 # ── PR-C: companion row for food.frozen_vegetables — the catalog's REAL bulk_qty ─────
 # The 10.0-bulk row above deliberately pins a lead that FAILS the stockup_value floor.
-# The catalog's actual bulk_qty is 22.5 (nine 2.5 kg bags — this household buys 2.5 kg
-# bags, 8-10 at a time, limited by freezer space), at which the SAME discount clears the
+# The catalog's actual bulk_qty is 20.0 (eight 2.5 kg bags — confirmed with the user
+# 2026-08-01: real trips are 4-8 bags, 10-20 kg), at which the SAME discount clears the
 # floor. Assert the catalog value itself so this test fails loudly if it ever drifts,
 # rather than silently asserting a number that no longer matches the sku it's named for.
 frozen_veg_bulk_qty = catalog.WATCHLIST["food.frozen_vegetables"]["bulk_qty"]
-chk("food.frozen_vegetables bulk_qty is the catalog's real 22.5 (9 x 2.5 kg bags)",
-    frozen_veg_bulk_qty == 22.5, frozen_veg_bulk_qty)
+chk("food.frozen_vegetables bulk_qty is the catalog's real 20.0 (8 x 2.5 kg bags)",
+    frozen_veg_bulk_qty == 20.0, frozen_veg_bulk_qty)
 
 fv_ref, fv_unit, fv_shelf = 3.20, 2.40, 365
 fv_discount = (fv_ref - fv_unit) / fv_ref
@@ -282,10 +282,10 @@ fv_saving = round((fv_ref - fv_unit) * frozen_veg_bulk_qty, 2)
 fv_v, fv_got_discount, fv_failed = C.verdict_consumable(
     fv_unit, fv_ref, C.CONF_HIGH, None, 90, 2.0, saving_eur=fv_saving)
 fv_rank = C.rank_score(fv_got_discount, fv_saving, fv_v, False, fv_shelf)
-chk("food.frozen_vegetables at its real bulk_qty: saving == 18.00", fv_saving == 18.00, fv_saving)
+chk("food.frozen_vegetables at its real bulk_qty: saving == 16.00", fv_saving == 16.00, fv_saving)
 chk("food.frozen_vegetables at its real bulk_qty: Strong Buy, no failed gates",
     (fv_v, fv_failed) == (C.VERDICT_STRONG, []), (fv_v, fv_failed))
-chk("food.frozen_vegetables at its real bulk_qty: rank == 46.00", round(fv_rank, 2) == 46.00,
+chk("food.frozen_vegetables at its real bulk_qty: rank == 39.83", round(fv_rank, 2) == 39.83,
     fv_rank)
 
 
@@ -344,7 +344,7 @@ for sku, cfg in catalog.WATCHLIST.items():
         _shelf_life_missing.append((sku, days))
 chk("Invariant SHELF-COVERAGE: every WATCHLIST sku carries a positive numeric shelf_life_days",
     _shelf_life_missing == [], _shelf_life_missing)
-chk("catalog.WATCHLIST holds exactly 30 skus", len(catalog.WATCHLIST) == 30,
+chk("catalog.WATCHLIST holds exactly 28 skus", len(catalog.WATCHLIST) == 28,
     len(catalog.WATCHLIST))
 
 
