@@ -32,14 +32,13 @@ Three LLM calls per week, hard-capped candidate counts, no paid APIs, no scrapin
 product pages. The whole thing fits inside the free tiers.
 
 `config.py` is the frozen contract — every threshold, prompt and schema lives there and nowhere
-else. `catalog.py` is your data: 44 consumables and 18 durables with a `trigger_eur` (the price
-at which you would actually buy). Consumables no longer carry a hand-set target price — their
-reference is *observed*, computed by `config.reference_for()` from Lidl Bulgaria's statutory
-price-transparency export: the same product's own shelf price first, then the category's p25
-shelf price, then (low confidence only) the audit's own reference. The one exception is
-`target_eur`, an absolute promote-only pre-commitment mirroring `trigger_eur`, currently set on a
-single sku (`supp.whey_protein`, at EUR 25.00/kg). Editing the catalog is still the main way you
-steer this thing.
+else. `catalog.py` is your data: 44 consumables, no durables. Consumables no longer carry a
+hand-set target price — their reference is *observed*, computed by `config.reference_for()` from
+Lidl Bulgaria's statutory price-transparency export: the same product's own shelf price first,
+then the category's p25 shelf price, then (low confidence only) the audit's own reference. The
+one exception is `target_eur`, an absolute promote-only pre-commitment, currently set on a single
+sku (`supp.whey_protein`, at EUR 25.00/kg). Editing the catalog is still the main way you steer
+this thing.
 
 ## Setup
 
@@ -58,11 +57,10 @@ load-bearing rather than housekeeping: `state/price_history.json` is this projec
 for a paid price-history API. It is worthless in week 1 and decisive by week 12, and it only
 accumulates because CI commits it back after every run.
 
-Then edit `catalog.py`. Set a `trigger_eur` on the durables you actually want. Consumables need
-no manual target — their reference price is learned from the Lidl statutory export — unless you
-want a hard pre-commitment, which is what `target_eur` is for. **Catalog slugs are permanent
-identifiers** — renaming one resets that product's price history and its alert-suppression
-window.
+Then edit `catalog.py`. Consumables need no manual target — their reference price is learned from
+the Lidl statutory export — unless you want a hard pre-commitment, which is what `target_eur` is
+for. **Catalog slugs are permanent identifiers** — renaming one resets that product's price
+history and its alert-suppression window.
 
 Locally: `pip install -r requirements.txt` (that is `requests` + `python-dotenv`, and the list
 does not grow — RSS is parsed with stdlib `xml.etree`, HTML with `re`), and put the same
@@ -151,5 +149,3 @@ undo. The short version of the most expensive ones:
 - Nothing keys on prose. `sku` is the key everywhere; `name` is display-only.
 - No BGN, anywhere. `parse_eur` returns `None` for a `лв.` amount and there is no conversion
   code.
-- Off-list discoveries can never reach Strong Buy — enforced in code rather than by a threshold,
-  because that is *the* spam vector.

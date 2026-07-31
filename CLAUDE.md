@@ -46,9 +46,10 @@ the g→kg and ml→L divisors exist.
 
 This cuts both ways: **the same class of bug is possible in our own parsers.** `parse_eur` once
 read `1.393,28 €` as `393.28` and `2.499 €` as `2.499` — a €2499 television understated 1000×
-sits below every `trigger_eur` in the catalog, and a trigger hit deliberately bypasses every
-other gate, so nothing downstream could have caught it. Ten regressions in `test_match.py` guard
-the separator handling. Treat any money parser as load-bearing.
+sat below every `trigger_eur` in the catalog (the now-deleted durable pre-commitment field), and a
+trigger hit deliberately bypassed every other gate, so nothing downstream could have caught it.
+Ten regressions in `test_match.py` guard the separator handling. Treat any money parser as
+load-bearing.
 
 ### Observations split `promo` / `regular`; only `regular` may inform the reference
 Every source feeding this pipeline is a promotions feed, so every price it observes is a promo
@@ -135,17 +136,16 @@ again. Measured 2026-07-31, 18 of 27 observed skus are over the threshold, and `
 into a finite, shrinking to-do list. It reads the same windowed series the reference reads, so the
 line always describes the number the verdicts actually used.
 
-### `target_eur` and `trigger_eur` are PROMOTE-ONLY, and must never be guessed
-`target_eur` (consumable, per unit) mirrors `trigger_eur` (durable, per item): the user named the
-number themselves, so no baseline inflation can fake it and no other gate applies. **Neither is
-ever a discount denominator** — a pre-commitment is a bound on the user's willingness to buy, not
-a market price.
+### `target_eur` is PROMOTE-ONLY, and must never be guessed
+`target_eur` (consumable, per unit) is a number the user named themselves, so no baseline
+inflation can fake it and no other gate applies. It is **never a discount denominator** — a
+pre-commitment is a bound on the user's willingness to buy, not a market price.
 
-Because they bypass every gate, they are the most dangerous values in the system. Set one **only**
-where the user genuinely holds a number. As of the 2026-07-31 interview exactly one exists:
-`supp.whey_protein` at €25.00/kg. Salmon was proposed at €19/kg and deliberately **not** set — the
-user buys it at €18/kg *normally*, so a €19 trigger is always-on, which is a spam vector rather
-than a pre-commitment.
+Because it bypasses every gate, it is one of the most dangerous values in the system. Set it
+**only** where the user genuinely holds a number. As of the 2026-07-31 interview exactly one
+exists: `supp.whey_protein` at €25.00/kg. Salmon was proposed at €19/kg and deliberately **not**
+set — the user buys it at €18/kg *normally*, so a €19 target is always-on, which is a spam vector
+rather than a pre-commitment.
 
 ### `ref_evidence` scores REFERENCE credibility, never OFFER credibility
 Offer credibility is near-constant across these feeds. **The "before" price is where marketing
@@ -162,8 +162,7 @@ a hand-set par at all, and they exist for the same reason it did: without a full
 a leaflet consumable's total evidence is 0.2 against a 1.0 bar, so **no consumable could ever
 reach Strong Buy** and the whole consumable half of the digest would sit at Fair while looking
 like correct ruthless behaviour. The replacement is strictly better evidence: a legally mandated
-shelf price rather than a number the user guessed. Durables have no shelf export and so get no
-leg — which is what keeps the bar meaningful for them.
+shelf price rather than a number the user guessed.
 
 ### `trap_detected` is a reported observation, not a veto
 Python consumes it by zeroing the `retailer_claim` leg. The LLM cannot kill a lead.
@@ -172,11 +171,6 @@ Python consumes it by zeroing the `retailer_claim` leg. The LLM cannot kill a le
 It may turn `Strong Buy` into `Skip`. It is not for "they don't need this" (that is `fit_score`)
 and not for "the discount looks fake" (that is `trap_detected`). This is the LLM's only lever over
 the outcome, and it is a narrow deliberate exception.
-
-### Off-list discovery can never exceed Fair
-Enforced in code via `OFFLIST_FAIR_CEILING`, not by a threshold, because this is *the* spam
-vector and a tuning mistake must not be able to open it. Off-list **consumable** discovery is cut
-entirely — with no par there is nothing to compute €/kg against.
 
 ### `quarantine` ≠ `skip`
 `skip` means "evaluated, not worth it". `quarantine` means "we don't trust our own arithmetic".
@@ -298,6 +292,16 @@ pandas.** No test touches the network — every parser test reads a committed fi
 fixture must keep the original's internal quirks (inline strings, empty sharedStrings, omitted
 trailing cells, its own real header row); a tidy synthetic file stops testing the thing that
 breaks.
+
+### `ccc` and `mydealz` survive the durable removal, as consumable-only sources
+It would look correct to delete both feeds along with the durable class — camelcamelcamel's price
+drops skew electronics, and removing the class that consumed most of them looks like it should
+take the feed with it. It does not: Amazon.de's Bulk-brand whey-protein price drops are the
+household's real protein-powder channel, and `mydealz`'s hot-deals feed covers the same Amazon.de
+merchant. Losing either feed would leave `supp.whey_protein` — the one sku holding a `target_eur`
+— with no deterministic promo source, pushing it onto the off-list discovery path that this same
+removal just cut entirely. Only the durable-only `category_hint` field is gone from both parsers;
+the feeds themselves and their parsing logic are untouched.
 
 ## Data sources
 
@@ -431,7 +435,7 @@ step list, or it never runs in CI.**
 ## Out of scope for v1
 
 So nobody builds them by accident: OCR of scanned brochures · any per-product page fetch (403
-risk; the corroborate call covers it) · off-list discovery reaching Strong Buy · off-list
-consumable discovery · any BGN handling or conversion · stock or branch-level availability ·
-Keepa / Amazon PA-API / any paid API · sparkline charts in `web/` (text stats until the store has
-~12 weeks of depth) · a second notification channel.
+risk; the corroborate call covers it) · any durable/wishlist tracking · any BGN handling or
+conversion · stock or branch-level availability · Keepa / Amazon PA-API / any paid API ·
+sparkline charts in `web/` (text stats until the store has ~12 weeks of depth) · a second
+notification channel.
