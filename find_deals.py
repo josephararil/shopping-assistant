@@ -299,10 +299,19 @@ def _score(cand, hist):
     cand["evidence"] = evidence
 
     floor = C.promo_floor(history.stats_for(hist, sku))
+
+    # bulk_qty and saving_eur are computed BEFORE the verdict, because the stock-up floor
+    # is now one of the gates. Left in the old order (saving_eur assigned at the end of
+    # this function) the gate reads None on every single lead, so it never fires — and
+    # the digest looks completely identical, with no error anywhere. saving_eur_for reads
+    # reference_eur, unit_price_eur and bulk_qty; all three are set by this point.
+    cand["bulk_qty"] = sku_cfg.get("bulk_qty")
+    cand["saving_eur"] = C.saving_eur_for(cand)
+
     verdict, discount, failed = C.verdict_consumable(
         cand.get("unit_price_eur"), reference, ref_conf, floor,
-        cand.get("fit_score"), evidence, sku_cfg.get("target_eur"))
-    cand["bulk_qty"] = sku_cfg.get("bulk_qty")
+        cand.get("fit_score"), evidence, sku_cfg.get("target_eur"),
+        saving_eur=cand["saving_eur"])
 
     if cand.get("quality_flag") == "junk" and verdict == C.VERDICT_STRONG:
         verdict = C.VERDICT_SKIP
@@ -311,7 +320,6 @@ def _score(cand, hist):
     cand["verdict"] = verdict
     cand["discount"] = discount
     cand["failed_gates"] = failed
-    cand["saving_eur"] = C.saving_eur_for(cand)
     return cand
 
 
@@ -879,7 +887,9 @@ def main():
     seen_state = prune_seen(load_seen())
     for c in audited_candidates:
         c["is_repeat"] = _is_repeat(seen_state, c)
-        c["rank_score"] = C.rank_score(c.get("discount"), c.get("saving_eur"), c.get("verdict"), c["is_repeat"])
+        c["rank_score"] = C.rank_score(
+            c.get("discount"), c.get("saving_eur"), c.get("verdict"), c["is_repeat"],
+            shelf_life_days=(catalog.CATALOG.get(c.get("sku")) or {}).get("shelf_life_days"))
 
     emailable = [c for c in audited_candidates if c.get("verdict") in (C.VERDICT_STRONG, C.VERDICT_FAIR)]
 
