@@ -437,18 +437,86 @@ CONSUMABLE_FAIR_DISCOUNT   = 0.05
 CONSUMABLE_STRONG_MIN_FIT  = 70
 PROMO_FLOOR_SLACK          = 1.10   # "near the floor" = within 10% above it
 
+# ── Stock-up value ──────────────────────────────────────────────────────────
+# The whole point of the digest is "now is a fantastic time to STOCK UP on X", so the
+# money that actually moves is (reference - unit_price) x bulk_qty, weighted by how long
+# the product keeps. A deep discount on something that spoils in three weeks is not a
+# stock-up opportunity, however good the per-kilo number looks.
+
+# The shelf life at which the stock-up term saturates. Chosen so a freezer staple still
+# scores well (chicken, 120 d -> 0.67) while a 21-day yoghurt (0.12) cannot out-rank it
+# on an equal saving. Above 180 days the difference stops mattering: rice keeping 540
+# days rather than 180 does not make the household buy more of it.
+STOCKUP_FULL_DAYS      = 180
+
+# The Strong Buy floor on absolute money moved, and the direct successor to the deleted
+# DURABLE_MIN_ABS_SAVING_EUR = 40. With durables gone nothing else floors absolute
+# money, and "stock up now" on a €3 saving is precisely the spam this pipeline exists to
+# avoid. Strong-Buy ONLY: a sub-floor lead still reaches Fair, so nothing is silenced —
+# repeats are demoted, not hidden.
+#
+# THIS IS THE #1 KNOB TO REVISIT AFTER RUN 1. Read the `stockup_value` count in
+# state/last_run.json's failed_gates histogram BEFORE touching it. Measured 2026-07-31
+# against the observed Lidl shelf p25 in fixtures/, this floor is demanding: of the 13
+# skus with observed shelf prices, only food.salmon_fillet has slack (the 20% discount
+# gate binds first), food.coffee_ground needs 22.8% and food.pork_meat 36%, while
+# food.yoghurt, food.peas_tinned, food.lutenitsa and food.cottage_cheese cannot clear it
+# at ANY discount — 100% off still saves under €10 on their bulk_qty. That is intended
+# (those are not stock-up-worthy sums) and was confirmed by the user against this
+# measurement, but if `stockup_value` dominates the histogram, lower this before
+# touching any discount rung.
+STOCKUP_MIN_SAVING_EUR = 10.00
+
+# Fallback when a sku omits shelf_life_days, or carries a value that is not a positive
+# number. Deliberately equal to STOCKUP_FULL_DAYS so the factor is 1.0: a missing field
+# must never SILENTLY demote a sku, because the demotion would be invisible. Loudness
+# lives in the test instead — test_verdicts.py asserts every WATCHLIST sku carries a
+# POSITIVE numeric shelf_life_days (Invariant SHELF-COVERAGE).
+DEFAULT_SHELF_LIFE_DAYS = 180
+
 # rank_score puts every consumable on one scale so the Top-5 block can order a €15
 # olive-oil drum against a €100 whey stock-up.
 RANK_DISCOUNT_WEIGHT  = 40
 RANK_DISCOUNT_FULL    = 0.50    # discount at which the discount term saturates
-RANK_SAVING_WEIGHT    = 40
-RANK_SAVING_FULL_EUR  = 150     # saving at which the saving term saturates
+RANK_STOCKUP_WEIGHT   = 40
+# The stock-up saving at which the saving term saturates. Was RANK_SAVING_FULL_EUR = 150,
+# sized for a €170 headphone saving that can no longer occur now that durables are gone;
+# 120 re-centres the scale on what a grocery stock-up actually moves.
+RANK_STOCKUP_FULL_EUR = 120
 RANK_VERDICT_BONUS    = 20
 RANK_REPEAT_PENALTY   = 15
 
 
+def shelf_life_factor(shelf_life_days):
+    """How much stock-up credit a product's shelf life earns -> float in (0.0, 1.0].
+
+    `min(1.0, days / STOCKUP_FULL_DAYS)`. Multiplies the STOCK-UP term of rank_score
+    only — never the discount term and never the verdict bonus.
+
+    Anything that is not a positive number — None, 0, a negative, a string, a bool —
+    falls back to DEFAULT_SHELF_LIFE_DAYS, i.e. factor 1.0. Two reasons, and they point
+    the same way:
+
+    - A missing field must never SILENTLY demote a sku. Invariant SHELF-COVERAGE in
+      test_verdicts.py is what makes bad data loud; doing it here instead would make a
+      forgotten field look like a market judgement.
+    - The naive `min(1, days / 180)` returns -0.028 for days = -5, a NEGATIVE factor
+      that would subtract from the rank and put the result outside this function's own
+      declared range. Guarding the sign here keeps the range honest.
+
+    >>> shelf_life_factor(180), shelf_life_factor(90), shelf_life_factor(550)
+    (1.0, 0.5, 1.0)
+    >>> shelf_life_factor(None), shelf_life_factor(0), shelf_life_factor(-5)
+    (1.0, 1.0, 1.0)
+    """
+    days = shelf_life_days
+    if isinstance(days, bool) or not isinstance(days, (int, float)) or days <= 0:
+        days = DEFAULT_SHELF_LIFE_DAYS
+    return min(1.0, days / STOCKUP_FULL_DAYS)
+
+
 def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, evidence,
-                       target_eur=None):
+                       target_eur=None, saving_eur=None):
     """Beat the observed reference AND be near the historical promo floor.
 
     Cheap versus other shops AND cheap versus its own history — the two questions are
@@ -462,6 +530,9 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
       discount dominates   -> CONSUMABLE_STRONG_DISCOUNT is too high
       evidence dominates   -> corroboration is under-firing; RAISE
                               MAX_CORROBORATE_PER_RUN, do NOT lower the evidence bar
+      stockup_value dominates -> the watchlist holds items whose bulk saving is under
+                              STOCKUP_MIN_SAVING_EUR; prune them, raise their bulk_qty to
+                              what the household really buys, or lower the floor
       near_floor dominates -> the market routinely beats the observed reference
       fit dominates        -> the watchlist holds items the household does not want
       low_confidence_reference dominates -> too many skus mix grades; split them (the
@@ -491,6 +562,12 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
         failed.append("fit")
     if (evidence or 0) < MIN_EVIDENCE_FAIR:
         failed.append("evidence")
+    if saving_eur is not None and saving_eur < STOCKUP_MIN_SAVING_EUR:
+        # The stock-up floor: this is a deal, but not enough money moves to be worth a
+        # special trip and freezer space. `saving_eur is None` means "not computable"
+        # (no bulk_qty, or no reference) and must NOT fail — inventing a rejection from
+        # a missing input is the mirror image of inventing a discount.
+        failed.append("stockup_value")
     if confidence == CONF_LOW:
         # A hard Fair ceiling, in CODE rather than in a threshold, because a tuning
         # mistake must not be able to open a spam vector. It catches two cases: an
@@ -505,15 +582,22 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
     return VERDICT_SKIP, discount, failed
 
 
-def rank_score(discount, saving_eur, verdict, is_repeat=False):
+def rank_score(discount, saving_eur, verdict, is_repeat=False, shelf_life_days=None):
     """Ranking for the Top-5 block.
+
+    Three terms and a penalty: how deep the discount is, how much money a stock-up
+    actually moves, and whether it cleared every gate. `shelf_life_days` scales the
+    STOCK-UP term only — a 25%-off yoghurt and a 25%-off chicken breast can move similar
+    money on paper, but only one of them survives long enough to be worth buying in bulk.
 
     `discount` and `saving_eur` may legitimately be None — a lead can reach a verdict
     with no computable saving (no bulk_qty, or no reference). Both are coerced to 0
-    rather than crashing the run."""
+    rather than crashing the run. `shelf_life_days` is handled by shelf_life_factor,
+    which never raises and never returns a negative."""
     return round(
         RANK_DISCOUNT_WEIGHT * min(1.0, max(0.0, (discount or 0)) / RANK_DISCOUNT_FULL)
-        + RANK_SAVING_WEIGHT * min(1.0, max(0.0, (saving_eur or 0)) / RANK_SAVING_FULL_EUR)
+        + RANK_STOCKUP_WEIGHT * min(1.0, max(0.0, (saving_eur or 0)) / RANK_STOCKUP_FULL_EUR)
+                              * shelf_life_factor(shelf_life_days)
         + RANK_VERDICT_BONUS * (1 if verdict == VERDICT_STRONG else 0)
         - RANK_REPEAT_PENALTY * (1 if is_repeat else 0), 2)
 
@@ -609,6 +693,9 @@ def gates_prompt_text():
         f"- A consumable reaches Strong Buy only at >= {round(CONSUMABLE_STRONG_DISCOUNT * 100)}% "
         f"under the household's target unit price, AND near its historical promo floor "
         f"(within {round((PROMO_FLOOR_SLACK - 1) * 100)}%), AND fit_score >= {CONSUMABLE_STRONG_MIN_FIT}.\n"
+        f"- It must ALSO move at least €{STOCKUP_MIN_SAVING_EUR:.2f} of real money across a full "
+        f"stock-up ((reference - unit price) x how much the household buys at once). A deep "
+        f"percentage on a small pack is not a stock-up opportunity.\n"
         f"- A retailer's own 'was' price is worth {EVIDENCE_WEIGHTS['retailer_claim']} of the "
         f"{MIN_EVIDENCE_STRONG} reference-credibility needed for a Strong Buy. It is nearly "
         f"worthless on its own — which is why an honest reference_price_eur matters more than "
