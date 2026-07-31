@@ -9,7 +9,6 @@ import sys
 sys.stdout.reconfigure(encoding="utf-8")
 
 import config as C
-import catalog
 import sources
 
 _fails = []
@@ -37,7 +36,6 @@ chk("ccc[0] price_eur", o["price_eur"] == 42.18, o["price_eur"])
 chk("ccc[0] was_price_eur", o["was_price_eur"] == 59.37, o["was_price_eur"])
 chk("ccc[0] claimed_discount", round(o["claimed_discount"], 2) == 0.29, o["claimed_discount"])
 chk("ccc[0] retailer", o["retailer"] == "Amazon.de", o["retailer"])
-chk("ccc[0] category_hint is None", o["category_hint"] is None)
 chk("ccc[0] source", o["source"] == "ccc")
 
 # Spot check 2: Carson MiniBrite (index 11) — was_price_eur and claimed_discount to 2dp.
@@ -106,9 +104,6 @@ chk("mydealz[0] heat is int 108", o["heat"] == 108 and isinstance(o["heat"], int
 chk("mydealz[0] name has heat prefix stripped", o["name"] == "Besiege (Steam); PS5 für 5,99 €", o["name"])
 chk("mydealz[0] price_eur", o["price_eur"] == 2.95, o["price_eur"])
 
-chk("mydealz[0] category_hint is a CATEGORY_HINTS key",
-    o["category_hint"] in catalog.CATEGORY_HINTS, o["category_hint"])
-
 # pepper:merchant with no `name` attribute -> retailer falls back to "mydealz".
 o = myd_offers[1]
 chk("mydealz[1] merchant has no name -> retailer mydealz", o["retailer"] == "mydealz", o["retailer"])
@@ -123,11 +118,6 @@ chk("mydealz[3] no merchant element -> price None", o["price_eur"] is None)
 o = myd_offers[23]
 chk("mydealz[23] thousands-separated price parses correctly", o["price_eur"] == 1393.28, o["price_eur"])
 chk("mydealz[23] retailer normalised via alias", o["retailer"] == "Amazon.de", o["retailer"])
-
-# category_hint sanity across the whole parsed set: every non-None value must be a
-# real CATEGORY_HINTS key.
-bad_hints = [x["category_hint"] for x in myd_offers if x["category_hint"] is not None and x["category_hint"] not in catalog.CATEGORY_HINTS]
-chk("mydealz all category_hints are valid CATEGORY_HINTS keys or None", bad_hints == [], bad_hints)
 
 
 # ── fetch_ccc / fetch_mydealz never raise, and report failures ─────────────
@@ -207,11 +197,11 @@ chk("fetch_ccc below MIN_EXPECTED_OFFERS warns in note",
 sources._fetch_text = _orig_fetch_text
 
 
-# ── harvest() offers carry all 11 contract keys + 7 match.annotate keys ─────
+# ── harvest() offers carry all 10 contract keys + 7 match.annotate keys ─────
 
 CONTRACT_KEYS = {
     "source", "retailer", "name", "price_eur", "was_price_eur", "claimed_discount",
-    "valid_until", "url", "heat", "category_hint", "raw",
+    "valid_until", "url", "heat", "raw",
 }
 ANNOTATE_KEYS = {"sku", "sku_class", "match_conf", "qty", "unit", "unit_price_eur", "pending_qty"}
 ALL_KEYS = CONTRACT_KEYS | ANNOTATE_KEYS
@@ -230,7 +220,7 @@ sources._fetch_text = _orig_fetch_text2
 sources._fetch_bytes = _orig_fetch_bytes
 
 missing_key_offers = [o for o in all_offers if not ALL_KEYS.issubset(o.keys())]
-chk("harvest offers all carry 11 contract keys + 7 annotate keys",
+chk("harvest offers all carry 10 contract keys + 7 annotate keys",
     missing_key_offers == [], f"{len(missing_key_offers)} offers missing keys")
 chk("harvest returns offers for both sources", len(all_offers) == 20 + 30, len(all_offers))
 
@@ -266,13 +256,13 @@ for name, (was, now) in VERIFIED_PAIRS.items():
         chk(f"lidl claimed_discount to 2dp: {name}",
             round(o["claimed_discount"], 2) == expected_discount, o["claimed_discount"])
 
-# Contract shape: all 11 keys, source == "lidl", retailer == "Lidl", no validity date.
+# Contract shape: all 10 keys, source == "lidl", retailer == "Lidl", no validity date.
 LIDL_CONTRACT_KEYS = {
     "source", "retailer", "name", "price_eur", "was_price_eur", "claimed_discount",
-    "valid_until", "url", "heat", "category_hint", "raw",
+    "valid_until", "url", "heat", "raw",
 }
 bad_offers = [o for o in lidl_promo if not LIDL_CONTRACT_KEYS.issubset(o.keys())]
-chk("lidl promo offers all carry the 11 contract keys", bad_offers == [], len(bad_offers))
+chk("lidl promo offers all carry the 10 contract keys", bad_offers == [], len(bad_offers))
 chk("lidl promo offers all source=='lidl'", all(o["source"] == "lidl" for o in lidl_promo))
 chk("lidl promo offers all retailer=='Lidl'", all(o["retailer"] == "Lidl" for o in lidl_promo))
 chk("lidl promo offers (first-file schema) all valid_until is None — "
