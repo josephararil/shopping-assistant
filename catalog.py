@@ -5,11 +5,15 @@ owns and edits, while config.py holds knobs the pipeline owns. The travel repo's
 config.py hit 727 lines by mixing knobs, data and prompts, and became unreviewable.
 
 ── WHAT THE USER OWNS ───────────────────────────────────────────────────────────
-`target_eur` and `trigger_eur` are USER-OWNED numbers, and both are PROMOTE-ONLY
-absolute pre-commitments — "yes at this price" — that outrank all discount maths.
-`target_eur` is the consumable form (EUR per unit), `trigger_eur` the durable one.
-Set either ONLY where the user genuinely holds a number; a guessed pre-commitment
-bypasses every other gate and is the most dangerous value in the system.
+`target_eur` is a USER-OWNED number: an absolute PROMOTE-ONLY pre-commitment —
+"yes at this price" — that outranks all discount maths, EUR per unit. Set it ONLY
+where the user genuinely holds a number; a guessed pre-commitment bypasses every
+other gate and is the most dangerous value in the system.
+
+There is no durable wishlist any more. The user does not buy one-off durables
+through this pipeline and already covers Amazon.de with their own
+camelcamelcamel.de price alert; the 18 durable entries with guessed `trigger_eur`
+values were noise nobody asked for.
 
 There is deliberately NO `par_eur` here any more. 44 hardcoded EUR/kg targets used to
 be the reference for every consumable verdict, and all 44 were guesses generated from
@@ -549,201 +553,8 @@ WATCHLIST = {
     },
 }
 
-# ── Durables: one-off purchases with an absolute "yes at this price" trigger ──
-# No target_eur by default and no unit: a durable is judged on discount against a CREDIBLE reference
-# plus absolute saving, or bought outright at trigger_eur. Because there is no
-# statutory shelf price, durables get no `own_shelf`/`statutory_shelf` leg — a lone retailer claim
-# leaves them far below MIN_EVIDENCE_STRONG, which is the point.
-WISHLIST = {
-    "av.sony_xm5": {
-        "class": "durable", "label": "Sony WH-1000XM5 headphones",
-        "trigger_eur": 200.00, "restock_days": 730,
-        "match": {
-            "any_of": [["sony", "xm5"], ["sony", "wh1000xm5"], ["wh1000xm5"],
-                       ["sony", "wh", "1000xm5"]],
-            "none": ["case", "hulle", "калъф", "pads", "earpads", "cable", "кабел",
-                     "stand", "стойка", "xm4", "xm3"],
-        },
-    },
-    "tech.robot_vacuum": {
-        "class": "durable", "label": "Robot vacuum with mop + self-empty base",
-        "trigger_eur": 220.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["робот", "прахосмукачка"], ["robot", "vacuum"],
-                       ["saugroboter"], ["roborock"], ["dreame"], ["robotska"]],
-            "none": ["чанта", "bag", "торбичк", "филтър", "filter", "четка",
-                     "brush", "мопа", "части", "spare", "accessor"],
-        },
-    },
-    "tech.nas_hdd_4tb": {
-        "class": "durable", "label": "NAS-grade 4 TB hard drive",
-        "trigger_eur": 90.00, "restock_days": 365,
-        "match": {
-            "any_of": [["ironwolf", "4tb"], ["wd", "red", "4tb"], ["nas", "4tb"],
-                       ["hdd", "4tb"], ["4tb", "nas"]],
-            "none": ["ssd", "външен", "external", "usb", "кутия", "enclosure",
-                     "2tb", "8tb", "docking"],
-        },
-    },
-    "kitchen.airfryer": {
-        "class": "durable", "label": "Air fryer, 5 L+ dual or single basket",
-        "trigger_eur": 90.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["airfryer"], ["air", "fryer"], ["heisluftfritteuse"],
-                       ["горещ", "въздух", "фритюрник"], ["ninja", "airfryer"]],
-            "none": ["кошница", "basket", "части", "spare", "accessor", "хартия",
-                     "paper", "liner", "мазнина", "oil"],
-        },
-    },
-    # ── Computing and phones ────────────────────────────────────────────
-    "tech.laptop": {
-        "class": "durable", "label": "Laptop, mid-range (8GB+ RAM / 256GB+ SSD)",
-        "trigger_eur": 450.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["лаптоп"], ["laptop"], ["notebook"]],
-            "none": ["чанта", "калъф", "case", "зарядно", "charger", "адаптер",
-                     "adapter", "стойка", "stand", "раница", "backpack", "sleeve",
-                     "аксесоар", "accessory"],
-        },
-    },
-    "tech.tablet": {
-        "class": "durable", "label": "Tablet, mid-range",
-        "trigger_eur": 180.00, "restock_days": 1460,
-        "match": {
-            "any_of": [["таблет"], ["tablet"]],
-            "none": ["хапче", "лекарство", "витамин", "vitamin", "калъф", "case",
-                     "стойка", "stand", "фолио", "protector", "стъкло"],
-        },
-    },
-    "tech.phone": {
-        "class": "durable", "label": "Smartphone, mid-range",
-        "trigger_eur": 220.00, "restock_days": 1095,
-        "match": {
-            "any_of": [["телефон"], ["smartphone"], ["phone"]],
-            "none": ["калъф", "case", "стъкло", "screen", "protector", "зарядно",
-                     "charger", "кабел", "cable", "поставка", "holder"],
-        },
-    },
-    "av.tv": {
-        "class": "durable", "label": "TV, 50-55\" 4K",
-        "trigger_eur": 280.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["телевизор"], ["fernseher"], ["smart", "tv"], ["led", "tv"]],
-            "none": ["стойка", "stand", "конзола", "wall", "mount", "стена",
-                     "дистанционно", "remote", "тонколони", "soundbar", "калъф",
-                     "case", "кутия", "box", "аксесоар", "accessory"],
-        },
-    },
-    "tech.ereader": {
-        "class": "durable", "label": "E-reader (Kindle/Kobo)",
-        "trigger_eur": 75.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["amazon", "kindle"], ["kobo"], ["електронен", "четец"],
-                       ["e", "reader"]],
-            "none": ["калъф", "case", "cover", "фолио", "protector", "стойка",
-                     "stand", "играчка", "toy"],
-        },
-    },
-    # ── Kitchen appliances ───────────────────────────────────────────────
-    "kitchen.coffee_machine": {
-        "class": "durable", "label": "Espresso / bean-to-cup coffee machine",
-        "trigger_eur": 200.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["кафемашина"], ["espresso", "machine"], ["кафе", "машина"],
-                       ["kaffeemaschine"], ["nespresso", "машина"]],
-            "none": ["капсули", "capsules", "хартиен", "filter", "филтър",
-                     "почистващ", "descaler", "entkalker", "чашки", "cups",
-                     "накип", "descale", "играчка", "toy", "резервен", "spare",
-                     "part"],
-        },
-    },
-    "kitchen.stand_mixer": {
-        "class": "durable", "label": "Stand mixer / food processor",
-        "trigger_eur": 100.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["кухненски", "робот"], ["stand", "mixer"],
-                       ["food", "processor"], ["kuchenmaschine"],
-                       ["миксер", "кухненски"]],
-            "none": ["приставка", "attachment", "купа", "bowl", "резервна",
-                     "резервен", "spare", "part", "аксесоар", "accessory"],
-        },
-    },
-    "kitchen.multicooker": {
-        "class": "durable", "label": "Pressure cooker / multicooker",
-        "trigger_eur": 55.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["мултикукър"], ["multicooker"], ["pressure", "cooker"],
-                       ["instant", "pot"]],
-            "none": ["уплътнение", "гума", "gasket", "капак", "lid", "spare",
-                     "part", "резервен", "измервателна"],
-        },
-    },
-    # ── Large appliances ─────────────────────────────────────────────────
-    "house.dishwasher": {
-        "class": "durable", "label": "Dishwasher, built-in or freestanding",
-        "trigger_eur": 280.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["съдомиялна"], ["dishwasher"], ["spulmaschine"]],
-            "none": ["таблетки", "tablets", "капсули", "capsules", "гел", "gel",
-                     "сол", "salt", "гланц", "rinse", "препарат", "detergent",
-                     "части", "spare", "филтър", "filter"],
-        },
-    },
-    "house.washing_machine": {
-        "class": "durable", "label": "Washing machine, 7-8 kg",
-        "trigger_eur": 280.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["перална", "машина"], ["washing", "machine"],
-                       ["waschmaschine"], ["перална"]],
-            "none": ["прах", "powder", "капсули", "capsules", "гел", "gel",
-                     "омекотител", "softener", "маркуч", "hose", "филтър",
-                     "filter", "части", "spare", "стойка", "stand"],
-        },
-    },
-    "house.stick_vacuum": {
-        "class": "durable", "label": "Upright / cordless stick vacuum cleaner",
-        "trigger_eur": 100.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["прахосмукачка", "безжична"], ["stick", "vacuum"],
-                       ["upright", "vacuum"], ["akkusauger"],
-                       ["прахосмукачка", "стик"]],
-            "none": ["чанта", "bag", "торбичк", "филтър", "filter", "четка",
-                     "brush", "маркуч", "hose", "части", "spare", "робот",
-                     "robot"],
-        },
-    },
-    "house.chest_freezer": {
-        "class": "durable", "label": "Chest freezer, 200 L+",
-        "trigger_eur": 200.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["фризер", "ковчег"], ["chest", "freezer"],
-                       ["gefriertruhe"]],
-            "none": ["хладилник", "fridge", "части", "spare", "филтър", "filter"],
-        },
-    },
-    # ── Family / DIY ─────────────────────────────────────────────────────
-    "baby.car_seat": {
-        "class": "durable", "label": "Child car seat",
-        "trigger_eur": 90.00, "restock_days": 1095,
-        "match": {
-            "any_of": [["столче", "кола"], ["car", "seat"], ["autositz"]],
-            "none": ["хранене", "количка", "stroller", "играчка", "toy", "калъф",
-                     "cover", "велосипед", "bike", "части", "spare"],
-        },
-    },
-    "tools.cordless_diy": {
-        "class": "durable", "label": "Cordless drill/driver DIY tool",
-        "trigger_eur": 65.00, "restock_days": 1825,
-        "match": {
-            "any_of": [["акумулаторна", "бормашина"], ["cordless", "drill"],
-                       ["akkuschrauber"], ["акумулаторен", "винтоверт"]],
-            "none": ["резервна", "spare", "части", "part", "накрайник", "bit"],
-        },
-    },
-}
-
-# Every sku the pipeline knows, consumables first so a consumable rule wins a tie.
-CATALOG = {**WATCHLIST, **WISHLIST}
+# CATALOG is WATCHLIST; the split exists only so callers have one stable name to import.
+CATALOG = dict(WATCHLIST)
 
 # ── Retailer normalisation ──────────────────────────────────────────────────
 # Feeds spell the same chain many ways. Everything keys on the normalised display
@@ -771,35 +582,6 @@ RETAILER_ORDER = [
     "silabg", "Amazon.de", "Technopolis", "Technomarket", "Zora",
     "JYSK", "IKEA", "mydealz",
 ]
-
-# ── Category hints -> class ─────────────────────────────────────────────────
-# Used ONLY by the off-list discovery path, to decide whether an unmatched offer is a
-# plausible durable. Off-list CONSUMABLE discovery is cut entirely: with no par there
-# is nothing to compute a unit price against. A hint that maps to "consumable" or is
-# absent therefore kills the lead at `no_sku_match`.
-CATEGORY_HINTS = {
-    # mydealz <category> values
-    "elektronik": "durable",
-    "haushalt & wohnen": "durable",
-    "computer & zubehor": "durable",
-    "gaming": "durable",
-    "heimwerken & garten": "durable",
-    "lebensmittel & haushalt": "consumable",
-    "drogerie & gesundheit": "consumable",
-    "beauty & gesundheit": "consumable",
-    # broshura.bg / camelcamelcamel-ish groupings
-    "electronics": "durable",
-    "техника": "durable",
-    "електроника": "durable",
-    "бяла техника": "durable",
-    "мебели": "durable",
-    "инструменти": "durable",
-    "хранителни стоки": "consumable",
-    "хранителни": "consumable",
-    "напитки": "consumable",
-    "битова химия": "consumable",
-    "козметика": "consumable",
-}
 
 # ── Unit vocabulary ─────────────────────────────────────────────────────────
 # Maps every spelling a source may use to a canonical raw unit. match.parse_qty then
