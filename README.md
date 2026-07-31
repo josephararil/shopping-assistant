@@ -63,12 +63,12 @@ variables in a `.env`.
 
 ## Running it
 
-The offline suites. All six run without network in under a second, and CI gates the weekly run
+The offline suites. Every one runs without network in under a second, and CI gates the weekly run
 on them so that a parser broken by a site layout change fails loudly instead of harvesting
 nothing and producing a digest that merely looks like a quiet week:
 
 ```bash
-python test_match.py && python test_prefilter.py && python test_history.py && python test_verdicts.py && python test_sources.py && python test_stub.py
+python test_match.py && python test_prefilter.py && python test_history.py && python test_verdicts.py && python test_sources.py && python test_llm_fallback.py && python test_stub.py
 ```
 
 Two different dry runs, for two different questions:

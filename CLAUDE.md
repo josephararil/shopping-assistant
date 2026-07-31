@@ -172,6 +172,39 @@ field to App.jsx, that test tells you to emit it.
 "buy 5 kg = €9.80" instead of €49.00 — wrong in a way that looks entirely plausible, which is why
 it has its own assertion. Python owns all arithmetic, in the UI's numbers too.
 
+### A reasoning model that is UNAVAILABLE falls down a tier; a model that REJECTS us does not
+`gemini-pro-latest` returned sustained HTTP 503 "experiencing high demand" on 2026-07-31, killing
+Stage 3 and stalling Stage 4 — the run produced nothing while each stage ground through its retry
+ladder. Backoff cannot fix a capacity outage, so `common._reason_with_fallback` walks
+`config.GEMINI_REASONING_FALLBACKS` (pro -> flash). A weaker model that answers beats a better one
+that does not.
+
+**Only availability failures fall back** — `_RETRY_STATUSES` plus network errors. A 400 raises
+immediately: a malformed request or a bad `responseSchema` fails identically on every model, and
+falling back would disguise our own bug as Google's capacity problem. `test_llm_fallback.py` asserts
+the 400 case never reaches the fallback model.
+
+**The primary fails over fast.** Grinding the primary and *then* failing over costs the sum of both
+ladders. `GEMINI_ATTEMPTS_BEFORE_FALLBACK = 2` applies only while somewhere better exists to go; the
+last model in a chain keeps the full ladder.
+
+**`GEMINI_REASONING_TIMEOUT` must stay ahead of the model's honest latency.** Measured 2026-07-31: a
+Stage-4 AUDIT call on `gemini-pro-latest` timed out at the old 180 s default and then succeeded in
+**179 s** — a one-second margin. A thinking model at a 16k budget takes minutes. If the timeout is
+tighter than that, the chain falls to flash on a HEALTHY week and quietly downgrades every
+`fit_score`; the fallback exists for a model that is *unavailable*, never for one that is merely
+slow. Raise the timeout before touching anything else, and keep `weekly.yml`'s `timeout-minutes`
+above `stages x batches x GEMINI_REASONING_TIMEOUT` — Actions minutes are free on a public repo, so
+that headroom is free too.
+
+**A fallback is recorded, never silent.** `common.MODEL_FALLBACKS_USED` reaches `last_run.json` as
+`model_fallbacks`, because a flash-served AUDIT reasons differently from a pro-served one — a
+fallback week's `fit_score`s are not strictly comparable, and that must be explainable rather than
+mistaken for a market shift. Do not make this quieter.
+
+The lite search tier (`GEMINI_SEARCH_MODEL`) is never a reasoning fallback; `_gemini_search` already
+degrades to `""` and lets the reasoner continue knowledge-only.
+
 ### Thresholds reach prompts only via `gates_prompt_text()`
 The travel repo hardcoded `>= 80` in a prompt while the real gate lived in `STAGE1_MIN_SCORE`; they
 drifted and the prompt confidently lied to the model for months.
@@ -268,10 +301,11 @@ and `promo_floor` needs ~6 weeks to bite.
 
 ```bash
 python test_match.py && python test_prefilter.py && python test_history.py \
-  && python test_verdicts.py && python test_sources.py && python test_stub.py
+  && python test_verdicts.py && python test_sources.py && python test_llm_fallback.py \
+  && python test_stub.py
 ```
 
-All six run offline in under a second. `weekly.yml` runs them as a separate `tests` job that gates
+They all run offline in under a second. `weekly.yml` runs them as a separate `tests` job that gates
 both the weekly pipeline (`needs: tests`) and every pull request, so a parser broken by a site
 layout change fails loudly instead of harvesting nothing and producing a digest that merely looks
 like a quiet week. The pipeline job itself is skipped on `pull_request` — it spends LLM tokens,

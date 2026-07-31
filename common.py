@@ -23,22 +23,26 @@ _MAX_RETRIES = 4
 _RETRY_DELAYS = [2, 4, 8]  # seconds between attempts
 
 
-def _post_with_retry(url, headers, json_body, timeout=180):
+def _post_with_retry(url, headers, json_body, timeout=180, max_retries=None):
     """POST with exponential backoff on transient errors (5xx, 429, network).
-    Auth failures (401, 403) and client errors (400, 422) are returned immediately."""
-    for attempt in range(_MAX_RETRIES):
+    Auth failures (401, 403) and client errors (400, 422) are returned immediately.
+
+    max_retries trims the ladder for a call that has a fallback model behind it — see
+    config.GEMINI_ATTEMPTS_BEFORE_FALLBACK. None uses the full _MAX_RETRIES."""
+    attempts = max_retries or _MAX_RETRIES
+    for attempt in range(attempts):
         try:
             r = requests.post(url, headers=headers, json=json_body, timeout=timeout)
-            if r.status_code not in _RETRY_STATUSES or attempt == _MAX_RETRIES - 1:
+            if r.status_code not in _RETRY_STATUSES or attempt == attempts - 1:
                 return r
             delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
-            print(f"  [retry {attempt + 1}/{_MAX_RETRIES}] HTTP {r.status_code}, retrying in {delay}s")
+            print(f"  [retry {attempt + 1}/{attempts}] HTTP {r.status_code}, retrying in {delay}s")
             time.sleep(delay)
         except requests.exceptions.RequestException as exc:
-            if attempt == _MAX_RETRIES - 1:
+            if attempt == attempts - 1:
                 raise
             delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
-            print(f"  [retry {attempt + 1}/{_MAX_RETRIES}] {type(exc).__name__}: {exc}, retrying in {delay}s")
+            print(f"  [retry {attempt + 1}/{attempts}] {type(exc).__name__}: {exc}, retrying in {delay}s")
             time.sleep(delay)
 
 
@@ -115,6 +119,50 @@ def _gemini_search(search_text, max_tokens):
     return out
 
 
+# Every reasoning-model fallback taken this process, as "primary->served" strings.
+# find_deals writes it into last_run.json: a flash-served AUDIT scores differently from a
+# pro-served one, so a fallback week must be explainable rather than look like a market shift.
+MODEL_FALLBACKS_USED = []
+
+
+def _reason_with_fallback(gmodel, headers, body, response_schema):
+    """POST the reasoning call, walking config.GEMINI_REASONING_FALLBACKS when the model is
+    UNAVAILABLE. Returns the successful response.
+
+    Only availability failures fall back (_RETRY_STATUSES + network errors); a 400 raises
+    immediately, because a bad request or bad responseSchema fails the same on every model
+    and silently retrying it elsewhere would disguise our bug as Google's capacity problem.
+    Raises the last error if the whole chain is exhausted."""
+    chain = [gmodel] + list(C.GEMINI_REASONING_FALLBACKS.get(gmodel, []))
+    for idx, m in enumerate(chain):
+        is_last = idx == len(chain) - 1
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
+        print(f"  [gemini] Reasoning via {m} (schema={response_schema is not None})")
+        try:
+            r = _post_with_retry(
+                url, headers=headers, json_body=body,
+                timeout=C.GEMINI_REASONING_TIMEOUT,
+                max_retries=None if is_last else C.GEMINI_ATTEMPTS_BEFORE_FALLBACK)
+        except requests.exceptions.RequestException as exc:
+            if is_last:
+                raise
+            print(f"  [gemini] {m} unreachable ({type(exc).__name__}) — "
+                  f"falling back to {chain[idx + 1]}")
+            continue
+        if r.ok:
+            if idx:
+                MODEL_FALLBACKS_USED.append(f"{gmodel}->{m}")
+                print(f"  [gemini] NOTE: served by fallback {m}, not {gmodel} — "
+                      f"scores this run are not strictly comparable to a {gmodel} run")
+            return r
+        print(f"  [gemini error] HTTP {r.status_code}: {r.text[:1000]}")
+        if is_last or r.status_code not in _RETRY_STATUSES:
+            r.raise_for_status()
+        print(f"  [gemini] {m} unavailable (HTTP {r.status_code}) — "
+              f"falling back to {chain[idx + 1]}")
+    raise RuntimeError(f"reasoning chain exhausted for {gmodel}")  # unreachable
+
+
 def _gemini(messages, model, max_tokens, want_search, response_schema=None, search_prompt=None):
     gmodel = C.GEMINI_MODEL_MAP.get(model, "gemini-flash-latest")
     text = "\n\n".join(m["content"] for m in messages)
@@ -143,9 +191,7 @@ def _gemini(messages, model, max_tokens, want_search, response_schema=None, sear
         if grounding:
             text = C.SEARCH_RESULTS_PREAMBLE.replace("{leads}", grounding) + text
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{gmodel}:generateContent"
     headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
-    print(f"  [gemini] Reasoning via {gmodel} (schema={response_schema is not None})")
 
     body = {
         "contents": [{"role": "user", "parts": [{"text": text}]}],
@@ -155,10 +201,7 @@ def _gemini(messages, model, max_tokens, want_search, response_schema=None, sear
         body["generationConfig"]["responseMimeType"] = "application/json"
         body["generationConfig"]["responseSchema"] = response_schema
 
-    r = _post_with_retry(url, headers=headers, json_body=body)
-    if not r.ok:
-        print(f"  [gemini error] HTTP {r.status_code}: {r.text[:1000]}")
-    r.raise_for_status()
+    r = _reason_with_fallback(gmodel, headers, body, response_schema)
     res, finish = _gemini_extract(r)
     if finish and finish != "STOP":
         print(f"  [gemini] WARNING: reasoning finishReason={finish} — output likely truncated "

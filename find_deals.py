@@ -936,6 +936,10 @@ def main():
         "rejects_by_reason": stage2_stats["rejects_by_reason"],
         "failed_gates": failed_hist,
         "stale_skus": stale,
+        # Non-empty when a reasoning model was unavailable and a weaker one served the
+        # stage. A fallback week's fit_scores are not strictly comparable to a normal
+        # week's, so this is recorded rather than inferred from odd-looking output.
+        "model_fallbacks": list(X.MODEL_FALLBACKS_USED),
     })
     write_run_md(today, reports, audited_candidates, stale, n_strong, n_fair, len(sent_items))
 
