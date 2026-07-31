@@ -224,21 +224,20 @@ def run():
     usable4 = r4["n"] >= C.REGULAR_MIN_N and r4["span_days"] >= C.REGULAR_MIN_SPAN_DAYS
     chk("regular_median: n=4 spanning 21+ days is usable", usable4 is True, r4)
 
-    # ── disc.* skus prune at DISC_SKU_MAX_DAYS, catalog skus survive to HISTORY_MAX_DAYS ──
+    # ── catalog skus prune at HISTORY_MAX_DAYS ──
     hist6 = history.load()
-    disc_sku = "disc.mystery_snack"
-    old_days = C.DISC_SKU_MAX_DAYS + 5   # older than disc TTL, younger than catalog TTL
-    old_date = (dt.date.today() - dt.timedelta(days=old_days)).isoformat()
+    too_old_date = (dt.date.today() - dt.timedelta(days=C.HISTORY_MAX_DAYS + 5)).isoformat()
+    still_fresh_date = (dt.date.today() - dt.timedelta(days=C.HISTORY_MAX_DAYS - 5)).isoformat()
 
-    history.record_promo(hist6, _promo_cand(disc_sku, 7.0))
-    hist6["skus"][disc_sku]["promo"][-1]["d"] = old_date
     history.record_promo(hist6, _promo_cand(SKU, 7.0))
-    hist6["skus"][SKU]["promo"][-1]["d"] = old_date
+    hist6["skus"][SKU]["promo"][-1]["d"] = too_old_date
+    history.record_promo(hist6, _promo_cand(SKU, 8.0))
+    hist6["skus"][SKU]["promo"][-1]["d"] = still_fresh_date
 
     history.prune(hist6)
-    chk("disc.* sku's old observation is pruned at DISC_SKU_MAX_DAYS",
-        len(hist6["skus"][disc_sku]["promo"]) == 0)
-    chk("catalog sku's observation survives to HISTORY_MAX_DAYS",
+    chk("an observation older than HISTORY_MAX_DAYS is pruned",
+        too_old_date not in [o.get("d") for o in hist6["skus"][SKU]["promo"]])
+    chk("an observation within HISTORY_MAX_DAYS survives",
         len(hist6["skus"][SKU]["promo"]) == 1)
 
     # ── prune keeps the newest MAX_OBS_PER_SKU, not the oldest ──

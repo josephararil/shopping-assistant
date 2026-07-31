@@ -95,11 +95,11 @@ match.annotate(wipes)
 chk("a pc sku with no count in its name stays pending, rather than using net mass",
     wipes["qty"] is None and wipes["pending_qty"] is True, wipes)
 
-# A durable never gets a quantity at all, net_qty present or not.
-durable_net = {"name": "Sony WH-1000XM5 слушалки", "price_eur": 249.0, "net_qty": 0.25}
-match.annotate(durable_net)
-chk("net_qty is ignored for a durable",
-    durable_net["qty"] is None and durable_net["unit_price_eur"] is None, durable_net)
+# An unmatched offer (no sku) never gets a quantity from net_qty, only from a name parse.
+unmatched_net = {"name": "Random unrelated product", "price_eur": 249.0, "net_qty": 0.25}
+match.annotate(unmatched_net)
+chk("net_qty is ignored when the sku is None",
+    unmatched_net["qty"] is None and unmatched_net["unit_price_eur"] is None, unmatched_net)
 
 # Junk values must fall through to the name parse, not divide by ~zero.
 for bad in (0, -1.0, "1.0", None, True):
@@ -138,14 +138,6 @@ smoked = {"name": "Пушена сьомга 200 г", "price_eur": 3.00}
 chk("smoked-vs-fresh trap: no salmon match",
     match.match_sku(smoked)[0] != "food.salmon_fillet", match.match_sku(smoked))
 
-bravia = {"name": "Sony Bravia TV 55", "price_eur": 500.0}
-chk("Sony Bravia trap: no xm5 match",
-    match.match_sku(bravia)[0] != "av.sony_xm5", match.match_sku(bravia))
-
-case = {"name": "Калъф за Sony WH-1000XM5", "price_eur": 15.0}
-chk("Sony case trap: no xm5 match",
-    match.match_sku(case)[0] != "av.sony_xm5", match.match_sku(case))
-
 nespresso = {"name": "Nespresso капсули кафе 10 бр", "price_eur": 4.0}
 chk("Nespresso capsule trap: no coffee-beans match",
     match.match_sku(nespresso)[0] != "food.coffee_beans", match.match_sku(nespresso))
@@ -160,15 +152,6 @@ chk("salmon annotate qty/unit", (salmon["qty"], salmon["unit"]) == (1.0, "kg"), 
 chk("salmon unit_price_eur computed correctly",
     salmon["unit_price_eur"] == round(11.40 / 1.0, 4), salmon["unit_price_eur"])
 chk("salmon pending_qty False", salmon["pending_qty"] is False)
-
-sony = {"name": "Sony WH-1000XM5 слушалки", "price_eur": 249.0}
-sku, sku_class, conf = match.match_sku(sony)
-chk("sony positive match", sku == "av.sony_xm5", (sku, sku_class, conf))
-chk("sony match_conf is high (two-token group)", conf == "high", conf)
-match.annotate(sony)
-chk("sony durable fields all None/False",
-    (sony["qty"], sony["unit"], sony["unit_price_eur"], sony["pending_qty"])
-    == (None, None, None, False), sony)
 
 olive = {"name": "Olivenöl extra vergine 0,5 L", "price_eur": 4.75}
 sku, sku_class, conf = match.match_sku(olive)
@@ -213,17 +196,12 @@ def _m(nm):
 
 chk("veto is suffix-tolerant: 'пушен' vetoes 'Пушена сьомга'",
     _m("Пушена сьомга 200 г") != "food.salmon_fillet")
-chk("veto is NOT substring-anywhere: 'spare' must not veto via 'transparent'",
-    _m("Roborock Q7 робот прахосмукачка transparent капак") == "tech.robot_vacuum",
-    f"got {_m('Roborock Q7 робот прахосмукачка transparent капак')}")
+chk("veto is NOT substring-anywhere: 'bar' must not veto via 'verstellbare'",
+    _m("Whey Protein verstellbare Portionsdose 1kg") == "supp.whey_protein",
+    f"got {_m('Whey Protein verstellbare Portionsdose 1kg')}")
 chk("veto is NOT substring-anywhere: 'cat' must not veto via 'speedcat'",
     _m("Сьомга филе прясна speedcat edition 1 кг") == "food.salmon_fillet",
     f"got {_m('Сьомга филе прясна speedcat edition 1 кг')}")
-chk("veto is NOT substring-anywhere: 'ear' must not veto via 'year'",
-    _m("Sony WH-1000XM5 headphones 2 year warranty") == "av.sony_xm5",
-    f"got {_m('Sony WH-1000XM5 headphones 2 year warranty')}")
-chk("veto still fires as a whole word: 'калъф' vetoes the case",
-    _m("Калъф за Sony WH-1000XM5") != "av.sony_xm5")
 
 
 # ── parse_eur thousands separators ───────────────────────────────────────────

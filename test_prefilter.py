@@ -8,8 +8,7 @@ from prefilter import prefilter
 TODAY = "2026-07-30"
 
 REASONS = {
-    "expired", "no_price", "no_sku_match", "over_reference",
-    "shallow_claim", "tiny_ticket", "dup", "over_cap",
+    "expired", "no_price", "no_sku_match", "over_reference", "dup", "over_cap",
 }
 
 
@@ -18,7 +17,7 @@ def offer(**kw):
     o = {
         "source": "llm_discover", "retailer": "Kaufland", "name": "Item",
         "price_eur": 10.0, "was_price_eur": None, "claimed_discount": None,
-        "valid_until": None, "url": "", "heat": None, "category_hint": None,
+        "valid_until": None, "url": "", "heat": None,
         "raw": "", "sku": None, "sku_class": None, "match_conf": None,
         "qty": None, "unit": None, "unit_price_eur": None, "pending_qty": False,
     }
@@ -51,25 +50,25 @@ def build_bulk(n=4000):
                 price_eur=9.0, qty=1.0, unit="kg", unit_price_eur=9.0,
             ))
         elif pattern == 2:
-            # good durable: trigger hit (av.sony_xm5 trigger 200.00)
+            # good consumable: a second good one, below reference*slack
             out.append(offer(
-                source=src, retailer=retailer, sku="av.sony_xm5",
-                sku_class="durable", match_conf="high",
-                price_eur=190.0, was_price_eur=250.0, claimed_discount=0.24,
+                source=src, retailer=retailer, sku="food.olive_oil",
+                sku_class="consumable", match_conf="high",
+                price_eur=7.0, qty=1.0, unit="L", unit_price_eur=7.0,
             ))
         elif pattern == 3:
-            # shallow_claim durable: no trigger hit, weak claimed discount
+            # over_reference consumable: well above reference*slack (9.00 * 1.15 = 10.35)
             out.append(offer(
-                source=src, retailer=retailer, sku="kitchen.airfryer",
-                sku_class="durable", match_conf="high",
-                price_eur=180.0, was_price_eur=200.0, claimed_discount=0.10,
+                source=src, retailer=retailer, sku="food.olive_oil",
+                sku_class="consumable", match_conf="high",
+                price_eur=12.0, qty=1.0, unit="L", unit_price_eur=12.0,
             ))
         elif pattern == 4:
-            # tiny_ticket durable: cheap ticket even with a steep claim
+            # consumable with no usable unit price: prefilter has no opinion, survives
             out.append(offer(
-                source=src, retailer=retailer, sku="tech.nas_hdd_4tb",
-                sku_class="durable", match_conf="medium",
-                price_eur=20.0, was_price_eur=50.0, claimed_discount=0.60,
+                source=src, retailer=retailer, sku="food.chicken_breast",
+                sku_class="consumable", match_conf="high",
+                price_eur=5.0, qty=None, unit=None, unit_price_eur=None,
             ))
         elif pattern == 5:
             # expired
@@ -83,25 +82,22 @@ def build_bulk(n=4000):
             # no_price
             out.append(offer(source=src, retailer=retailer, price_eur=None))
         elif pattern == 7:
-            # discovery-eligible durable: no sku, durable hint, clears both thresholds
+            # unmatched offer: no sku, no match -> no_sku_match
             out.append(offer(
                 source=src, retailer=retailer, name=f"Some Gadget {i}",
                 price_eur=100.0, was_price_eur=250.0, claimed_discount=0.60,
-                category_hint="elektronik",
             ))
         elif pattern == 8:
-            # discovery-ineligible: consumable hint, no sku -> must be cut regardless
+            # unmatched offer: no sku, no match -> no_sku_match
             out.append(offer(
                 source=src, retailer=retailer, name=f"Cheap Food Deal {i}",
                 price_eur=200.0, was_price_eur=1000.0, claimed_discount=0.95,
-                category_hint="хранителни стоки",
             ))
         else:
-            # discovery-ineligible: durable hint but below the thresholds
+            # unmatched offer: no sku, no match -> no_sku_match
             out.append(offer(
                 source=src, retailer=retailer, name=f"Weak Gadget {i}",
                 price_eur=61.0, was_price_eur=70.0, claimed_discount=0.10,
-                category_hint="elektronik",
             ))
     return out
 
@@ -141,7 +137,7 @@ chk("len(candidates) <= sum of caps for sources present",
     len(candidates) <= cap_sum,
     f"got {len(candidates)}, cap sum {cap_sum}")
 
-chk("every reject carries a non-empty reject_reason in the eight names",
+chk("every reject carries a non-empty reject_reason in the six names",
     all(r.get("reject_reason") in REASONS for r in rejects),
     f"bad reasons: {sorted({r.get('reject_reason') for r in rejects} - REASONS)}")
 
@@ -213,36 +209,6 @@ chk("consumable-hint discovery leads are all rejected no_sku_match",
 
 
 # ── Named regression scenarios (isolated, small, deterministic lists) ────────
-
-# Washing-machine regression: durable, 10% claimed discount, no trigger hit -> shallow_claim
-wm = offer(source="llm_discover", retailer="Technopolis", sku="test.washing_machine",
-           sku_class="durable", match_conf="high",
-           name="Washing machine", price_eur=450.0, was_price_eur=500.0,
-           claimed_discount=0.10)
-cands, rejs, _ = prefilter([wm], TODAY)
-chk("washing machine at 10% off, no trigger hit, is rejected shallow_claim",
-    len(cands) == 0 and len(rejs) == 1 and rejs[0]["reject_reason"] == "shallow_claim",
-    f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
-
-# 60% off a EUR 9 item -> tiny_ticket
-cheap = offer(source="llm_discover", retailer="Metro", sku="test.cheap_gadget",
-              sku_class="durable", match_conf="high",
-              name="Cheap gadget", price_eur=3.6, was_price_eur=9.0,
-              claimed_discount=0.60)
-cands, rejs, _ = prefilter([cheap], TODAY)
-chk("60% off a EUR 9 item is rejected tiny_ticket",
-    len(cands) == 0 and len(rejs) == 1 and rejs[0]["reject_reason"] == "tiny_ticket",
-    f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
-
-# Wishlist durable AT its trigger price survives even with only a 5% claimed discount
-trig = offer(source="llm_discover", retailer="Amazon.de", sku="av.sony_xm5",
-             sku_class="durable", match_conf="high",
-             name="Sony WH-1000XM5", price_eur=200.0, was_price_eur=210.0,
-             claimed_discount=0.05)
-cands, rejs, _ = prefilter([trig], TODAY)
-chk("a wishlist durable AT its trigger price survives a weak 5% claim",
-    len(cands) == 1 and len(rejs) == 0,
-    f"candidates={len(cands)} rejects={[r.get('reject_reason') for r in rejs]}")
 
 # Dedup keeps the CHEAPEST unit price, not the first seen
 d1 = offer(source="llm_discover", retailer="Lidl", sku="food.salmon_fillet",
