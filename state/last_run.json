@@ -1,1 +1,45 @@
-{}
+{
+  "date": "2026-07-31",
+  "reports": [
+    {
+      "source": "ccc",
+      "ok": true,
+      "n": 20,
+      "note": ""
+    },
+    {
+      "source": "mydealz",
+      "ok": true,
+      "n": 30,
+      "note": ""
+    },
+    {
+      "source": "lidl",
+      "ok": true,
+      "n": 700,
+      "note": ""
+    }
+  ],
+  "stage_counts": {
+    "harvested": 74,
+    "prefiltered_in": 74,
+    "prefiltered_out": 5,
+    "discovered": 0,
+    "audited": 5,
+    "strong_buy": 1,
+    "fair": 2,
+    "skip": 2,
+    "emailed": 0
+  },
+  "rejects_by_reason": {
+    "no_sku_match": 57,
+    "no_price": 8,
+    "shallow_claim": 1,
+    "over_par": 1,
+    "dup": 2
+  },
+  "failed_gates": {
+    "discount": 4
+  },
+  "stale_skus": []
+}

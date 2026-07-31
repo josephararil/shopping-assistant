@@ -1,1 +1,575 @@
-{"skus": {}}
+{
+  "skus": {
+    "food.beans_dried": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 1.69,
+          "qty": 0.1,
+          "unit_price_eur": 16.9,
+          "name": "Боб насипен 200-220/100 г"
+        }
+      ],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.225,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.3,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.1765,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.5172,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 20.4,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 16.9,
+          "p10": 16.9,
+          "median": 16.9,
+          "last": 16.9
+        },
+        "regular": {
+          "n": 5,
+          "median": 3.225,
+          "span_days": 0
+        }
+      }
+    },
+    "house.toilet_paper": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.3825,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.3825,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 2,
+          "median": 0.3825,
+          "span_days": 0
+        }
+      }
+    },
+    "food.coffee_beans": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 16.32,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 20.45,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 2,
+          "median": 16.32,
+          "span_days": 0
+        }
+      }
+    },
+    "food.lentils": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.04,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 1,
+          "median": 2.04,
+          "span_days": 0
+        }
+      }
+    },
+    "food.rice": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 1.39,
+          "qty": null,
+          "unit_price_eur": null,
+          "name": "Ориз среднозърнест 5% начупеност"
+        },
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 2.09,
+          "qty": 1.0,
+          "unit_price_eur": 2.09,
+          "name": "Krina Ориз Перлен"
+        }
+      ],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.49,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.53,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.99,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 2.09,
+          "p10": 2.09,
+          "median": 2.09,
+          "last": 2.09
+        },
+        "regular": {
+          "n": 3,
+          "median": 2.99,
+          "span_days": 0
+        }
+      }
+    },
+    "food.eggs": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.301,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 1,
+          "median": 0.301,
+          "span_days": 0
+        }
+      }
+    },
+    "food.pork_meat": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 7.8267,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 16.36,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 2,
+          "median": 7.8267,
+          "span_days": 0
+        }
+      }
+    },
+    "house.shampoo": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.98,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.175,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 2,
+          "median": 2.98,
+          "span_days": 0
+        }
+      }
+    },
+    "food.tomatoes_tinned": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.5833,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 1,
+          "median": 3.5833,
+          "span_days": 0
+        }
+      }
+    },
+    "food.sunflower_oil": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.78,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 1,
+          "median": 1.78,
+          "span_days": 0
+        }
+      }
+    },
+    "food.tea": {
+      "unit": null,
+      "class": null,
+      "promo": [],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 59.2,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 26.4,
+          "note": ""
+        },
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 17.75,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 3,
+          "median": 26.4,
+          "span_days": 0
+        }
+      }
+    },
+    "food.kashkaval": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 8.49,
+          "qty": null,
+          "unit_price_eur": null,
+          "name": "Milki Dream Кашкавал"
+        },
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 7.75,
+          "qty": 0.4,
+          "unit_price_eur": 19.375,
+          "name": "Железница Кашкавал от краве мляко"
+        }
+      ],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.325,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 19.375,
+          "p10": 19.375,
+          "median": 19.375,
+          "last": 19.375
+        },
+        "regular": {
+          "n": 1,
+          "median": 15.325,
+          "span_days": 0
+        }
+      }
+    },
+    "food.sugar": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 0.95,
+          "qty": 1.0,
+          "unit_price_eur": 0.95,
+          "name": "Zahira Захар"
+        }
+      ],
+      "regular": [
+        {
+          "d": "2026-07-31",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.58,
+          "note": ""
+        }
+      ],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 0.95,
+          "p10": 0.95,
+          "median": 0.95,
+          "last": 0.95
+        },
+        "regular": {
+          "n": 1,
+          "median": 0.58,
+          "span_days": 0
+        }
+      }
+    },
+    "kitchen.airfryer": {
+      "unit": null,
+      "class": "durable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Amazon.de",
+          "source": "mydealz",
+          "price_eur": 199.99,
+          "qty": null,
+          "unit_price_eur": null,
+          "name": "Philips Steam Airfryer 5000 Heißluftfritteuse mit Dampfgar-Funktion, 7,2 l, Sichtfenster und SteamClean [Prime]"
+        }
+      ],
+      "regular": [],
+      "stats": {
+        "promo": {
+          "n": 0,
+          "min": null,
+          "p10": null,
+          "median": null,
+          "last": null
+        },
+        "regular": {
+          "n": 0,
+          "median": null,
+          "span_days": 0
+        }
+      }
+    },
+    "food.yoghurt": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 0.56,
+          "qty": 0.4,
+          "unit_price_eur": 1.4,
+          "name": "Кисело мляко 2% ЗНП"
+        }
+      ],
+      "regular": [],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 1.4,
+          "p10": 1.4,
+          "median": 1.4,
+          "last": 1.4
+        },
+        "regular": {
+          "n": 0,
+          "median": null,
+          "span_days": 0
+        }
+      }
+    },
+    "food.butter": {
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-07-31",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 1.99,
+          "qty": 0.25,
+          "unit_price_eur": 7.96,
+          "name": "Прясно краве масло"
+        }
+      ],
+      "regular": [],
+      "stats": {
+        "promo": {
+          "n": 1,
+          "min": 7.96,
+          "p10": 7.96,
+          "median": 7.96,
+          "last": 7.96
+        },
+        "regular": {
+          "n": 0,
+          "median": null,
+          "span_days": 0
+        }
+      }
+    }
+  }
+}

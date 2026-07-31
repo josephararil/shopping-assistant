@@ -1,1 +1,215 @@
-{"entries": []}
+{
+  "entries": [
+    {
+      "d": "2026-07-31",
+      "sku": "food.rice",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Krina Ориз Перлен",
+      "price_eur": 2.09,
+      "unit_price_eur": 2.09,
+      "par_eur": 1.2,
+      "reference_price_eur": 2.5,
+      "discount": -0.7416666666666667,
+      "saving_eur": -8.9,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "retailer_claim",
+        "user_par"
+      ],
+      "verdict": "Skip",
+      "failed_gates": [
+        "discount"
+      ],
+      "reject_reason": null,
+      "fit_score": 85,
+      "rank_score": 0.0,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.yoghurt",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Кисело мляко 2% ЗНП",
+      "price_eur": 0.56,
+      "unit_price_eur": 1.4,
+      "par_eur": 2.2,
+      "reference_price_eur": 0.71,
+      "discount": 0.36363636363636376,
+      "saving_eur": 4.8,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "retailer_claim",
+        "user_par"
+      ],
+      "verdict": "Strong Buy",
+      "failed_gates": [],
+      "reject_reason": null,
+      "fit_score": 85,
+      "rank_score": 50.37,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.kashkaval",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Железница Кашкавал от краве мляко",
+      "price_eur": 7.75,
+      "unit_price_eur": 19.375,
+      "par_eur": 9.0,
+      "reference_price_eur": 9.0,
+      "discount": -1.1527777777777777,
+      "saving_eur": -20.75,
+      "evidence": 1.0,
+      "evidence_legs": [
+        "user_par"
+      ],
+      "verdict": "Skip",
+      "failed_gates": [
+        "discount"
+      ],
+      "reject_reason": null,
+      "fit_score": 80,
+      "rank_score": 0.0,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.butter",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Прясно краве масло",
+      "price_eur": 1.99,
+      "unit_price_eur": 7.96,
+      "par_eur": 8.5,
+      "reference_price_eur": 2.09,
+      "discount": 0.06352941176470583,
+      "saving_eur": 1.08,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "retailer_claim",
+        "user_par"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "discount"
+      ],
+      "reject_reason": null,
+      "fit_score": 90,
+      "rank_score": 5.37,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.sugar",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Zahira Захар",
+      "price_eur": 0.95,
+      "unit_price_eur": 0.95,
+      "par_eur": 1.0,
+      "reference_price_eur": 1.12,
+      "discount": 0.050000000000000044,
+      "saving_eur": 0.5,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "retailer_claim",
+        "user_par"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "discount"
+      ],
+      "reject_reason": null,
+      "fit_score": 85,
+      "rank_score": 4.13,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "kitchen.airfryer",
+      "retailer": "Amazon.de",
+      "source": "mydealz",
+      "name": "Philips Steam Airfryer 5000 Heißluftfritteuse mit Dampfgar-Funktion, 7,2 l, Sichtfenster und SteamClean [Prime]",
+      "price_eur": 199.99,
+      "unit_price_eur": null,
+      "par_eur": null,
+      "reference_price_eur": null,
+      "discount": null,
+      "saving_eur": null,
+      "evidence": null,
+      "evidence_legs": null,
+      "verdict": null,
+      "failed_gates": null,
+      "reject_reason": "shallow_claim",
+      "fit_score": null,
+      "rank_score": null,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.beans_dried",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Боб насипен 200-220/100 г",
+      "price_eur": 1.69,
+      "unit_price_eur": 16.9,
+      "par_eur": null,
+      "reference_price_eur": null,
+      "discount": null,
+      "saving_eur": null,
+      "evidence": null,
+      "evidence_legs": null,
+      "verdict": null,
+      "failed_gates": null,
+      "reject_reason": "over_par",
+      "fit_score": null,
+      "rank_score": null,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.rice",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Ориз среднозърнест 5% начупеност",
+      "price_eur": 1.39,
+      "unit_price_eur": null,
+      "par_eur": null,
+      "reference_price_eur": null,
+      "discount": null,
+      "saving_eur": null,
+      "evidence": null,
+      "evidence_legs": null,
+      "verdict": null,
+      "failed_gates": null,
+      "reject_reason": "dup",
+      "fit_score": null,
+      "rank_score": null,
+      "emailed": false
+    },
+    {
+      "d": "2026-07-31",
+      "sku": "food.kashkaval",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Milki Dream Кашкавал",
+      "price_eur": 8.49,
+      "unit_price_eur": null,
+      "par_eur": null,
+      "reference_price_eur": null,
+      "discount": null,
+      "saving_eur": null,
+      "evidence": null,
+      "evidence_legs": null,
+      "verdict": null,
+      "failed_gates": null,
+      "reject_reason": "dup",
+      "fit_score": null,
+      "rank_score": null,
+      "emailed": false
+    }
+  ]
+}
