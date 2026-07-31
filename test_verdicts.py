@@ -135,9 +135,11 @@ chk("target_eur outranks the low-confidence ceiling too", v == C.VERDICT_STRONG,
 # Every one of these was a WRONG verdict produced by a hardcoded par on 2026-07-31.
 # They are the reason the par machinery was deleted, so they are named cases here.
 
-# 1. house.shampoo: 3.79/L was a Strong Buy against an 8.00 par. Lidl's own shelf
-#    shampoo is 2.89/L — a "52% off" Amazon deal that costs MORE than just buying
-#    shampoo. The observed reference inverts the sign of the discount.
+# 1. A shampoo sku (house.shampoo, since removed from the catalog) at 3.79/L was a
+#    Strong Buy against an 8.00 par. Lidl's own shelf shampoo was 2.89/L — a "52% off"
+#    Amazon deal that costs MORE than just buying shampoo. The observed reference
+#    inverts the sign of the discount. The sku is gone; the numbers being pinned here
+#    (3.79 vs 2.89) are not.
 v, discount, failed = C.verdict_consumable(3.79, 2.89, HIGH, None, 90, ev_shelf_retailer)
 chk("regression: shampoo 3.79/L vs 2.89 shelf is NOT a Strong Buy",
     v != C.VERDICT_STRONG, f"got {v}")
