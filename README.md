@@ -129,6 +129,7 @@ records which gate each rejected lead died on, and it points at exactly one knob
 |---|---|---|
 | `discount` | the discount rungs are set above what this market does | lower `CONSUMABLE_STRONG_DISCOUNT` |
 | `evidence` | corroboration is under-firing | **raise `MAX_CORROBORATE_PER_RUN`. Do not lower the evidence bar.** |
+| `stockup_value` | the watchlist holds items whose bulk saving is under `STOCKUP_MIN_SAVING_EUR` | prune them, raise their `bulk_qty` to what the household really buys, or lower the floor if it is genuinely too strict |
 | `abs_savings` | the watchlist is full of low-ticket items | prune the catalog |
 | `near_floor` | the market routinely beats the observed reference | nothing to tune — the reference is already what shops charge |
 | `fit` | the watchlist holds things the household does not want | prune the catalog |

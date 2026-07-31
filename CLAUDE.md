@@ -156,6 +156,40 @@ exists: `supp.whey_protein` at €25.00/kg. Salmon was proposed at €19/kg and 
 set — the user buys it at €18/kg *normally*, so a €19 target is always-on, which is a spam vector
 rather than a pre-commitment.
 
+### Stock-up value is ranked on, not merely rendered — PR-C
+Until PR-C, `saving_eur` (the money a bulk buy actually moves) was computed and printed at the
+end of the consumable line, but nothing upstream of the email ever looked at it: a €0.20/kg
+20%-off yoghurt and a €5/kg 20%-off chicken breast ranked identically, even though only one of
+them is worth a special trip and freezer space. That looked correct — the discount gate and the
+fit score both passed — and was exactly the silent gap this pipeline exists to close.
+
+`saving_eur = (reference − unit_price) × bulk_qty` is the money actually moved, and it is now
+**both** the Strong Buy floor (`STOCKUP_MIN_SAVING_EUR`, gate name `stockup_value`) and the
+`rank_score` ranking weight (`RANK_STOCKUP_WEIGHT`, scaled by `shelf_life_factor`). Because the
+same number does both jobs, `bulk_qty` is load-bearing data, not decoration — a wrong `bulk_qty`
+both mis-gates and mis-ranks a sku in the same direction.
+
+**`STOCKUP_MIN_SAVING_EUR` (10.00) is Strong-Buy-only.** A lead under the floor still reaches
+Fair — demoted, not hidden, the same shape as every other cap in this file. It is the direct
+successor to the deleted `DURABLE_MIN_ABS_SAVING_EUR` (40), scaled down for a consumable's
+per-restock economics rather than a one-off durable purchase. It is also the #1 knob to revisit
+after run 1: read the `stockup_value` count in `state/last_run.json`'s `failed_gates` histogram
+before touching it, exactly as with every other gate in this file.
+
+**Invariant SHELF-COVERAGE.** Every `catalog.WATCHLIST` sku must carry a **positive** numeric
+`shelf_life_days`. `shelf_life_factor` returns `1.0` — full stock-up credit — for any invalid
+value (missing, `None`, non-numeric, zero, negative), on purpose: a missing field must never
+silently *demote* a sku, because the demotion would be invisible. The consequence is the
+opposite of what it looks like at first read — an omitted field makes a sku rank **higher**, not
+lower, and nothing errors. Loudness lives in the test instead, not in the ranking.
+
+**Invariant TARGET-PREFILTER.** `prefilter._reject_reason` must not reject a consumable priced at
+or below its `target_eur`. Without this, the rejection is invisible in a specific way: Stage 2
+runs *before* any verdict exists, so nothing errors and no gate is recorded in `failed_gates` —
+the offer is simply absent from the digest, as if it had never been harvested. The exemption is
+bounded by `target_eur` itself, so it is a narrow bypass for a number the user actually holds, not
+a loosening of `PREFILTER_REFERENCE_SLACK` for everyone else.
+
 ### `ref_evidence` scores REFERENCE credibility, never OFFER credibility
 Offer credibility is near-constant across these feeds. **The "before" price is where marketing
 nonsense lives.** A lone `retailer_claim` at 0.2 against bars of 1.0 / 2.0 / 2.5 is
@@ -215,9 +249,11 @@ in bulk, consumed steadily, restocked every two months — below shelf-stable ri
 years but that nobody eats through in 60 days. They measure different things and neither
 substitutes for the other.
 
-**`shelf_life_days` is recorded but not yet read, on purpose.** Its consumers arrive in PR-C. It
-is added now, ahead of anything that uses it, specifically so that PR-C never has to read a key
-that does not exist on 30 catalog entries it didn't write.
+**`shelf_life_days`'s consumers arrived in PR-C.** `config.shelf_life_factor` scales the
+`rank_score` stock-up term by it, `find_deals.ITEM_DATA_FIELDS` emits it to `deals_history.json`,
+and `web/src/App.jsx`'s Drawer renders it as "Keeps ~N days". It was added ahead of anything that
+used it specifically so that PR-C never had to read a key that did not exist on 30 catalog
+entries it didn't write — see Invariant SHELF-COVERAGE above for what an invalid value does.
 
 ### A Strong Buy's TTL is the item's own `restock_days`, not a global constant
 A recurring salmon promo the household already stocked up on stays quiet ~90 days; a genuinely

@@ -437,6 +437,9 @@ ITEM_DATA_FIELDS = [
     ("fit_score", lambda c, cfg: c.get("fit_score")),
     ("evidence", lambda c, cfg: c.get("evidence")),
     ("valid_until", lambda c, cfg: c.get("valid_until")),
+    # How long the PRODUCT keeps (not restock_days, which is how long a stock-up LASTS
+    # this household). Rendered in web/'s Drawer as "Keeps ~N days" — see CLAUDE.md.
+    ("shelf_life_days", lambda c, cfg: cfg.get("shelf_life_days")),
 ]
 
 
@@ -482,15 +485,21 @@ def _consumable_line(c):
         head = f"{name} — €{unit_price:.2f}/{unit}"
     else:
         head = f"{name} — €?/{unit}"
-    parts = [head]
+
+    # The stock-up clause leads the line: the whole point of this rewrite is that the
+    # user reads the stock-up framing first, not a per-kilo price. It only fires when
+    # all three inputs are known; otherwise `head` stays first, exactly as before.
+    bulk_total = _bulk_total(c, sku_cfg)
+    parts = []
+    if bulk_qty and unit_price is not None and saving is not None and bulk_total is not None:
+        parts.append(f"Stock up: buy {bulk_qty:g} {unit} = €{bulk_total:.2f}, saves €{saving:.2f}")
+    parts.append(head)
     # A low-confidence reference caps the verdict at Fair, so say so rather than
     # letting the number look more authoritative than it is.
     if c.get("reference_confidence") == C.CONF_LOW:
         parts.append(REFERENCE_CAVEAT.get(level, "low-confidence reference"))
     if sku_cfg.get("target_eur") and unit_price is not None and unit_price <= sku_cfg["target_eur"]:
         parts.append(f"beats your €{sku_cfg['target_eur']:.2f}/{unit} target")
-    if bulk_qty and unit_price is not None and saving is not None:
-        parts.append(f"buy {bulk_qty:g} {unit} = €{unit_price * bulk_qty:.2f}, saves €{saving:.2f}")
     if sku_cfg.get("bulk_note"):
         parts.append(sku_cfg["bulk_note"].rstrip("."))
     if c.get("valid_until"):
