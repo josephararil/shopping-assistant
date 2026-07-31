@@ -250,6 +250,59 @@ chk("over_cap overflow is rejected over_cap",
     len(rejs) == n_seed - cap and all(r["reject_reason"] == "over_cap" for r in rejs))
 
 
+# ── Invariant TARGET-PREFILTER ────────────────────────────────────────────────
+# supp.whey_protein carries target_eur 25.00/kg — the ONLY target_eur in the catalog,
+# and a number the user named themselves. Offered at 24.00/kg against an 18.00/kg
+# observed L2 baseline: PREFILTER_REFERENCE_SLACK * 18.00 = 20.70, so WITHOUT the bypass
+# Stage 2 rejects this `over_reference` and verdict_consumable — which returns Strong Buy
+# on the target hit — never runs at all.
+#
+# That failure is invisible by construction: Stage 2 precedes every verdict, so nothing
+# raises and no failed_gate is recorded. The offer is simply absent from the digest.
+# Latent rather than fired only because whey has no observed shelf history yet.
+WHEY_TARGET = catalog.WATCHLIST["supp.whey_protein"]["target_eur"]
+chk("supp.whey_protein still carries the target_eur this regression is about",
+    WHEY_TARGET == 25.00, WHEY_TARGET)
+
+WHEY_BASELINES = {"supp.whey_protein": {"p25": 18.00, "n": 8, "spread": 1.2}}
+_slack_ceiling = 18.00 * C.PREFILTER_REFERENCE_SLACK
+chk("the baseline really would reject 24.00/kg without a bypass (the trap is live)",
+    24.00 > _slack_ceiling, f"slack ceiling = {_slack_ceiling:.2f}")
+
+
+def whey(unit_price):
+    return offer(source="ccc", retailer="Amazon.de", name="Bulk whey 1 kg",
+                 sku="supp.whey_protein", sku_class="consumable", match_conf="high",
+                 price_eur=unit_price, qty=1.0, unit="kg", unit_price_eur=unit_price)
+
+
+c_hit, r_hit, _s = prefilter([whey(24.00)], TODAY, WHEY_BASELINES)
+chk("a target_eur hit at 24.00/kg SURVIVES prefilter despite an 18.00/kg reference",
+    len(c_hit) == 1 and r_hit == [], f"candidates={len(c_hit)} rejects={r_hit}")
+
+# The mirror case proves the bypass is BOUNDED by the target and not a blanket exemption
+# for the sku: one cent above 25.00 and the ordinary over_reference rule applies again.
+c_miss, r_miss, _s = prefilter([whey(25.01)], TODAY, WHEY_BASELINES)
+chk("a cent ABOVE the target is still rejected over_reference — the bypass is bounded",
+    len(c_miss) == 0 and len(r_miss) == 1
+    and r_miss[0]["reject_reason"] == "over_reference",
+    f"candidates={len(c_miss)} rejects={[r.get('reject_reason') for r in r_miss]}")
+
+# A target hit must also survive the CAP, not merely _reject_reason: _attractiveness
+# sorts it first. Seed cap+5 more attractive-looking olive oils on the same source and
+# assert the whey is still there.
+_cap = C.SOURCE_CAPS["ccc"]
+_flood = [offer(source="ccc", retailer=f"F{i}", sku="food.olive_oil",
+                sku_class="consumable", match_conf="high",
+                price_eur=1.00, qty=1.0, unit="L", unit_price_eur=1.00)
+          for i in range(_cap + 5)]
+_bl = dict(WHEY_BASELINES); _bl["food.olive_oil"] = {"p25": 9.00, "n": 8, "spread": 1.2}
+c_cap, _r_cap, _s = prefilter(_flood + [whey(24.00)], TODAY, _bl)
+chk("a target_eur hit sorts first and survives the source cap",
+    any(c["sku"] == "supp.whey_protein" for c in c_cap),
+    f"{len(c_cap)} candidates, skus={sorted({c['sku'] for c in c_cap})}")
+
+
 print(f"\n{len(_fails)} failure(s)" if _fails else "\nAll prefilter tests passed.")
 import sys
 sys.exit(1 if _fails else 0)
