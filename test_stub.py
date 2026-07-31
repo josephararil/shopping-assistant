@@ -115,13 +115,13 @@ import find_deals as fd
 OFFERS = [
     {"source": "lidl", "retailer": "Lidl", "name": "Сьомга филе 1 кг", "price_eur": 9.80,
      "was_price_eur": None, "claimed_discount": None, "valid_until": "2026-08-27",
-     "url": "https://lidl.bg/salmon", "heat": None, "category_hint": None, "raw": ""},
+     "url": "https://lidl.bg/salmon", "heat": None, "raw": ""},
     {"source": "lidl", "retailer": "Lidl", "name": "Пилешко филе 1 кг", "price_eur": 9.00,
      "was_price_eur": None, "claimed_discount": None, "valid_until": None,
-     "url": "", "heat": None, "category_hint": None, "raw": ""},
+     "url": "", "heat": None, "raw": ""},
     {"source": "ccc", "retailer": "Amazon.de", "name": "Зехтин намаление", "price_eur": 9.99,
      "was_price_eur": 13.99, "claimed_discount": 0.2859, "valid_until": None,
-     "url": "", "heat": None, "category_hint": None, "raw": ""},
+     "url": "", "heat": None, "raw": ""},
 ]
 for _o in OFFERS:
     match.annotate(_o)

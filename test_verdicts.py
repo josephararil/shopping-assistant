@@ -89,8 +89,8 @@ chk("no reference at all: Skip with ['no_reference']",
 # ── A LOW-confidence reference can never reach Strong Buy ───────────────
 # Two cases share this ceiling: an L3 llm_reference (no LLM-supplied number is ever the
 # authority on price) and a wide-spread L2 whose p25 averages across product grades that
-# are not the same thing. It is enforced in CODE, not by a threshold, for the same reason
-# as OFFLIST_FAIR_CEILING: a tuning mistake must not be able to open the spam vector.
+# are not the same thing. It is enforced in CODE, not by a threshold, because a tuning
+# mistake must not be able to open a spam vector.
 v, discount, failed = C.verdict_consumable(7.20, REFERENCE, LOW, None, 92, ev_shelf_retailer)
 chk("40% under on a LOW-confidence reference: Fair, never Strong",
     v == C.VERDICT_FAIR, f"got {v}")
@@ -109,8 +109,8 @@ for price in (6.00, 3.00, 0.50):
 
 
 # ── target_eur is a PROMOTE-ONLY pre-commitment ──────────────────────
-# It mirrors a durable's trigger_eur: the user named the number themselves, so no
-# baseline inflation can fake it and no other gate applies. It is NEVER a denominator.
+# The user named the number themselves, so no baseline inflation can fake it and no
+# other gate applies. It is NEVER a denominator.
 v, discount, failed = C.verdict_consumable(22.50, 30.00, HIGH, 20.00, 10, 0.0,
                                            target_eur=25.00)
 chk("target_eur hit: Strong Buy despite failing floor, fit AND evidence",

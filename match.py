@@ -165,9 +165,10 @@ def _to_amount(raw):
     """Turn a captured money body into a float, resolving separator ambiguity.
 
     This exists because the naive version silently understated prices by up to 1000x,
-    which is the worst possible failure in this pipeline: a EUR 2499 television read as
-    EUR 2.499 is below every trigger_eur in the catalog, so it becomes an instant false
-    Strong Buy. One parser slip is amplified by every gate downstream.
+    which is the worst possible failure in this pipeline: a EUR 2499 price read as
+    EUR 2.499 makes a pack look 1000x cheaper than it is, so its unit price lands far
+    under any reference and it becomes an instant false Strong Buy. One parser slip is
+    amplified by every gate downstream.
 
     Rules, in order:
       - both '.' and ',' present  -> the LAST one is the decimal separator

@@ -206,10 +206,10 @@ chk("veto is NOT substring-anywhere: 'cat' must not veto via 'speedcat'",
 
 # ── parse_eur thousands separators ───────────────────────────────────────────
 # A naive parse_eur understated prices by up to 1000x: "1.393,28" came back as 393.28
-# and "2.499" as 2.499. That is the worst failure available in this pipeline — a €2499
-# television read as €2.499 sits below every trigger_eur in the catalog, so it becomes an
-# instant false Strong Buy and no downstream gate can stop it. Found in the real mydealz
-# feed (LG gram laptop at 1.393,28 €).
+# and "2.499" as 2.499. That is the worst failure available in this pipeline — a pack
+# priced €2499 read as €2.499 divides down to a unit price 1000x under any reference, so
+# it becomes an instant false Strong Buy and no downstream gate can stop it. Found in the
+# real mydealz feed (LG gram laptop at 1.393,28 €).
 for _txt, _want in [
     ("1.393,28€", 1393.28),        # German: dot thousands, comma decimal
     ("2.499€", 2499.0),            # dot + exactly 3 digits = thousands, not 3 decimals
