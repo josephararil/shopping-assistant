@@ -72,6 +72,44 @@ GEMINI_MODEL_MAP = {
 # This is the only place the search model is named.
 GEMINI_SEARCH_MODEL = "gemini-3.1-flash-lite"
 
+# Reasoning-model fallback chain, keyed by the model that failed. Tried left to right.
+#
+# gemini-pro-latest returns sustained HTTP 503 "experiencing high demand" during Google
+# capacity spikes (observed 2026-07-31, killing Stage 3 and stalling Stage 4). Exponential
+# backoff cannot fix a capacity outage — the whole run produces nothing while every stage
+# grinds through its retry ladder. A weaker model that answers beats a better one that
+# does not, so fall down the tier instead of losing the run.
+#
+# ONLY availability failures fall back (_RETRY_STATUSES + network errors). A 400 raises
+# immediately: a malformed request or bad responseSchema fails identically on every model,
+# and falling back would mask our own bug as a capacity problem.
+#
+# CALIBRATION CAVEAT: a flash-served AUDIT reasons differently from a pro-served one, so
+# fit_scores from a fallback week are not strictly comparable to a normal week's. Every
+# fallback is recorded in common.MODEL_FALLBACKS_USED and written to last_run.json, so a
+# strangely-calibrated week can be explained rather than mistaken for a market shift.
+GEMINI_REASONING_FALLBACKS = {
+    "gemini-pro-latest": ["gemini-flash-latest"],
+}
+
+# Attempts to spend on a model that still HAS a fallback available. Grinding the primary
+# and THEN failing over costs the sum of both ladders, so fail over fast and save the full
+# retry ladder for the last model in the chain.
+GEMINI_ATTEMPTS_BEFORE_FALLBACK = 2
+
+# Read timeout for a REASONING call, in seconds. Deliberately generous.
+#
+# Measured 2026-07-31: a Stage-4 AUDIT on gemini-pro-latest timed out once at the old 180 s
+# default and then succeeded in 179 s — a ONE-SECOND margin. A thinking model at a 16k token
+# budget simply takes minutes, so 180 s was under-provisioned and the retry it forced doubled
+# the stage's wall-clock for nothing.
+#
+# This interacts with the fallback above and must stay ahead of it: if the timeout is tighter
+# than the model's honest latency, the chain falls to flash on a HEALTHY week and quietly
+# downgrades every fit_score. The fallback is for a model that is unavailable, never for one
+# that is merely slow. Raise this before lowering anything else.
+GEMINI_REASONING_TIMEOUT = 420
+
 # Optional per-stage provider overrides. None = use the global LLM_PROVIDER env var.
 PROVIDER_DISCOVER    = None
 PROVIDER_AUDIT       = None

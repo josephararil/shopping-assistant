@@ -40,7 +40,7 @@ concurrency:
 jobs:
   # The offline suites gate everything downstream. A parser broken by a site layout change
   # is caught here, against committed fixtures, instead of silently harvesting nothing and
-  # producing a digest that merely looks like a quiet week. All six run in under a second,
+  # producing a digest that merely looks like a quiet week. They all run in under a second,
   # need no secrets, and touch no network — so they are also the whole PR gate.
   tests:
     name: offline suites
@@ -60,6 +60,7 @@ jobs:
           python test_prefilter.py
           python test_history.py
           python test_verdicts.py
+          python test_llm_fallback.py
           python test_stub.py
 
   run:
@@ -70,9 +71,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    # Stage 5 corroboration is the only stage that scales with search latency, and it is
-    # capped at MAX_CORROBORATE_PER_RUN. 20 minutes carries headroom over the observed run.
-    timeout-minutes: 20
+    # Measured 2026-07-31: 10 minutes for a run with ONE audit batch, most of it spent inside
+    # gemini-pro-latest (a single Stage-4 call took 179 s, and a timed-out attempt before it
+    # cost another 180 s). Stage 4 scales with ceil(candidates / AUDIT_BATCH_SIZE) and Stage 5
+    # adds up to MAX_CORROBORATE_PER_RUN search calls, so a busier week multiplies that — the
+    # old 20-minute cap would have killed the run mid-stage and lost the digest.
+    # Actions minutes are free and unlimited on public repos, so this headroom costs nothing.
+    timeout-minutes: 45
     env:
       PYTHONUNBUFFERED: "1"
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
