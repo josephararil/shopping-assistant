@@ -476,9 +476,9 @@ DEFAULT_SHELF_LIFE_DAYS = 180
 
 # rank_score puts every consumable on one scale so the Top-5 block can order a €15
 # olive-oil drum against a €100 whey stock-up.
-RANK_DISCOUNT_WEIGHT  = 40
+RANK_DISCOUNT_WEIGHT  = 25
 RANK_DISCOUNT_FULL    = 0.50    # discount at which the discount term saturates
-RANK_STOCKUP_WEIGHT   = 40
+RANK_STOCKUP_WEIGHT   = 55
 # The stock-up saving at which the saving term saturates. Was RANK_SAVING_FULL_EUR = 150,
 # sized for a €170 headphone saving that can no longer occur now that durables are gone;
 # 120 re-centres the scale on what a grocery stock-up actually moves.
@@ -723,7 +723,7 @@ Now complete the task below, using these findings as fresh input alongside your 
 """
 
 # The household context every prompt shares, verbatim from the user's requirements.
-HOUSEHOLD_CONTEXT = """Household: a family of 3 (2 adults + a 4-year-old) living near Plovdiv, Bulgaria. Frugal, high-savings, buys in bulk and freezes. Quality over brand name — the best overall VALUE (quality per euro) is always preferred over the cheapest option and over the most prestigious one.
+HOUSEHOLD_CONTEXT = """Household: a family of 3 (2 adults + a 4-year-old) living in Plovdiv, Bulgaria. Frugal, high-savings, buys in bulk and has a dedicated freezer and storage room with a lot of space to keep non-perishable food. The family values quality over brand name — the best overall VALUE (quality per euro) is always preferred over the cheapest option and over the most prestigious one. The family aims for good nutrition, with vegetables and lean protein making up the bulk of their meals, usually cooked in sous vide or in the oven (NEVER fried).
 Currency: ALWAYS EUR. Never BGN, never lev, never "лв" — not in any field, not in any prose.
 Shipping: assume delivery to Bulgaria is free and already included in every price you see."""
 

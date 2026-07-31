@@ -90,7 +90,7 @@ WATCHLIST = {
         # The case that forces restock_days != shelf_life_days: 6 kg is eaten in ~60
         # days, but it keeps ~120 days frozen. Ranking must use the latter.
         "class": "consumable", "label": "Chicken breast fillet", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 60, "shelf_life_days": 120,
+        "bulk_qty": 4.0, "restock_days": 60, "shelf_life_days": 120,
         "freezable": True,
         "bulk_note": "Freeze in 500 g portions; keeps 4 months.",
         "match": {
@@ -142,7 +142,7 @@ WATCHLIST = {
         # This is the knob to raise if whey turns out to be under-alerted.
         "class": "consumable", "label": "Whey protein powder", "unit": "kg",
         "target_eur": 25.00,
-        "bulk_qty": 20.0, "restock_days": 300, "shelf_life_days": 550,
+        "bulk_qty": 5.0, "restock_days": 300, "shelf_life_days": 550,
         "freezable": False,
         "bulk_note": "Sealed tubs keep 18-24 months. The yearly promo is the buy window.",
         "match": {
@@ -154,7 +154,7 @@ WATCHLIST = {
     # ── Bulk food: meat and fish ──────────────────────────────────────────
     "food.pork_meat": {
         "class": "consumable", "label": "Pork (shoulder/leg), bulk cut", "unit": "kg",
-        "bulk_qty": 8.0, "restock_days": 75, "shelf_life_days": 120,
+        "bulk_qty": 4.0, "restock_days": 75, "shelf_life_days": 120,
         "freezable": True,
         "bulk_note": "Portion and freeze in 500 g bags; keeps 4 months.",
         "match": {
@@ -259,31 +259,6 @@ WATCHLIST = {
             "none": ["салата", "salad", "готов", "ready", "бебешк", "baby"],
         },
     },
-    "food.lentils": {
-        "class": "consumable", "label": "Lentils, dried", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 180, "shelf_life_days": 730,
-        "freezable": False,
-        "bulk_note": "Shelf-stable for years dry.",
-        "match": {
-            # "леща" is also Bulgarian for "lens" (glasses/camera) -- hard veto below.
-            "any_of": [["леща"], ["lentils"], ["linsen"]],
-            "none": ["очила", "glasses", "обектив", "lens", "камера", "camera",
-                     "контактни", "contact"],
-        },
-    },
-    "food.beans_dried": {
-        "class": "consumable", "label": "Dried beans", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 180, "shelf_life_days": 730,
-        "freezable": False,
-        "bulk_note": "Shelf-stable for years dry.",
-        "match": {
-            # "beans" alone also appears in "coffee beans" -- veto it here so this
-            # rule never steals food.coffee_ground's match.
-            "any_of": [["боб"], ["beans"], ["bohnen"], ["сух", "боб"]],
-            "none": ["кафе", "coffee", "зелен", "green", "консерв", "canned",
-                     "tinned"],
-        },
-    },
     "food.oats": {
         "class": "consumable", "label": "Rolled oats", "unit": "kg",
         "bulk_qty": 6.0, "restock_days": 150, "shelf_life_days": 270,
@@ -299,7 +274,7 @@ WATCHLIST = {
     # ── Bulk food: tinned goods ───────────────────────────────────────────
     "food.tomatoes_tinned": {
         "class": "consumable", "label": "Tinned tomatoes (chopped/peeled)", "unit": "kg",
-        "bulk_qty": 4.8, "restock_days": 150, "shelf_life_days": 730,
+        "bulk_qty": 10.0, "restock_days": 150, "shelf_life_days": 730,
         "freezable": False,
         "bulk_note": "12 x 400 g tins. Shelf-stable for 2+ years; stack a case.",
         "match": {
@@ -311,7 +286,7 @@ WATCHLIST = {
     },
     "food.tuna_tinned": {
         "class": "consumable", "label": "Tinned tuna", "unit": "kg",
-        "bulk_qty": 3.0, "restock_days": 150, "shelf_life_days": 1095,
+        "bulk_qty": 3.75, "restock_days": 150, "shelf_life_days": 1095,
         "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
@@ -322,7 +297,7 @@ WATCHLIST = {
     },
     "food.sweetcorn_tinned": {
         "class": "consumable", "label": "Tinned sweetcorn", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "bulk_qty": 8.5, "restock_days": 150, "shelf_life_days": 1095,
         "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
@@ -334,7 +309,7 @@ WATCHLIST = {
     },
     "food.peas_tinned": {
         "class": "consumable", "label": "Tinned green peas", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "bulk_qty": 10.0, "restock_days": 150, "shelf_life_days": 1095,
         "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
@@ -348,13 +323,26 @@ WATCHLIST = {
     },
     "food.chickpeas_tinned": {
         "class": "consumable", "label": "Tinned chickpeas", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "bulk_qty": 10.0, "restock_days": 150, "shelf_life_days": 1095,
         "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
             "any_of": [["нахут"], ["chickpeas"], ["kichererbsen"], ["chick", "peas"]],
             "none": ["хумус", "hummus", "паста", "снакс", "snack", "чипс",
                      "бебешк", "baby"],
+        },
+    },
+    "food.beans_tinned": {
+        "class": "consumable", "label": "Tinned beans (kidney/black)", "unit": "kg",
+        "bulk_qty": 10.0, "restock_days": 150, "shelf_life_days": 1095,
+        "freezable": False,
+        "bulk_note": "Shelf-stable for years; stock a case of tins.",
+        "match": {
+            "any_of": [["червен", "боб", "консерва"], ["черен", "боб", "консерва"],
+                       ["kidney", "beans"], ["black", "beans"], ["червен", "боб"],
+                       ["черен", "боб"], ["кидни"]],
+            "none": ["сух", "dried", "супа", "soup", "чили", "chili", "снакс",
+                     "snack", "бебешк", "baby"],
         },
     },
     # ── Bulk food: dairy and eggs ─────────────────────────────────────────
@@ -383,7 +371,7 @@ WATCHLIST = {
     },
     "food.cottage_cheese": {
         "class": "consumable", "label": "Cottage cheese (извара)", "unit": "kg",
-        "bulk_qty": 1.5, "restock_days": 21, "shelf_life_days": 21,
+        "bulk_qty": 6.0, "restock_days": 21, "shelf_life_days": 21,
         "freezable": False,
         "bulk_note": "Lidl own brand, 4-5 tubs a visit. Short life; do not overbuy.",
         "match": {
@@ -407,17 +395,6 @@ WATCHLIST = {
                      "йогурт", "сухо", "powder", "бебешко", "baby", "формула",
                      "formula", "шоколадово", "chocolate", "какао", "cocoa",
                      "овесено", "oat", "соево", "soy", "бадемово", "almond"],
-        },
-    },
-    "food.yoghurt": {
-        "class": "consumable", "label": "Plain yoghurt", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 21, "shelf_life_days": 21,
-        "freezable": False,
-        "bulk_note": "Short shelf life; buy for ~3 weeks at a time only.",
-        "match": {
-            "any_of": [["кисело", "мляко"], ["yoghurt"], ["joghurt"], ["йогурт"]],
-            "none": ["сирене", "cheese", "напитка", "drink", "детско", "baby",
-                     "формула", "formula", "бебешко"],
         },
     },
     "food.eggs": {
@@ -448,7 +425,7 @@ WATCHLIST = {
     },
     "food.lutenitsa": {
         "class": "consumable", "label": "Lutenitsa", "unit": "kg",
-        "bulk_qty": 3.0, "restock_days": 180, "shelf_life_days": 730,
+        "bulk_qty": 8.5, "restock_days": 180, "shelf_life_days": 730,
         "freezable": False,
         "bulk_note": "Shelf-stable for 2 years unopened; buy the case at a good promo.",
         "match": {
@@ -458,12 +435,12 @@ WATCHLIST = {
     },
     # ── Frozen ────────────────────────────────────────────────────────────
     "food.frozen_vegetables": {
-        # 9 x 2.5 kg bags — the user buys 2.5 kg bags, 8-10 at a time, limited only
-        # by freezer space.
+        # 8 x 2.5 kg bags — confirmed with the user 2026-08-01: real trips are 4-8
+        # bags (10-20 kg), capped at 8, not 9.
         "class": "consumable", "label": "Frozen mixed/single vegetables", "unit": "kg",
-        "bulk_qty": 22.5, "restock_days": 60, "shelf_life_days": 365,
+        "bulk_qty": 20.0, "restock_days": 60, "shelf_life_days": 365,
         "freezable": True,
-        "bulk_note": "9 x 2.5 kg bags. Already frozen; just needs freezer space.",
+        "bulk_note": "8 x 2.5 kg bags. Already frozen; just needs freezer space.",
         "match": {
             "any_of": [["замразени", "зеленчуци"], ["frozen", "vegetables"],
                        ["tiefkuhlgemuse"], ["замразен", "микс"]],
@@ -475,7 +452,7 @@ WATCHLIST = {
     "house.toilet_paper": {
         # 10-roll pack at ~4.50 EUR -> ~0.45 EUR/roll.
         "class": "consumable", "label": "Toilet paper", "unit": "pc",
-        "bulk_qty": 40.0, "restock_days": 90, "shelf_life_days": 3650,
+        "bulk_qty": 60.0, "restock_days": 90, "shelf_life_days": 3650,
         "freezable": False,
         "bulk_note": "Shelf-stable; buy 4 packs at a time.",
         "match": {
