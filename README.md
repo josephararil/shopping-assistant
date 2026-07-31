@@ -32,7 +32,11 @@ Three LLM calls per week, hard-capped candidate counts, no paid APIs, no scrapin
 product pages. The whole thing fits inside the free tiers.
 
 `config.py` is the frozen contract — every threshold, prompt and schema lives there and nowhere
-else. `catalog.py` is your data: 44 consumables, no durables. Consumables no longer carry a
+else. `catalog.py` is your data: **30 consumables**, all non-perishable bulk stock-up items —
+frozen meat and fish, tinned and dried staples, hard cheese, coffee, oil, honey, toilet paper.
+Perishables the household actually eats fresh (bananas, apples, fresh vegetables) are deliberately
+excluded: a bulk buy of something that rots before it's used is not an arbitrage, it's waste, and
+this catalog only tracks products a stock-up genuinely extends. Consumables no longer carry a
 hand-set target price — their reference is *observed*, computed by `config.reference_for()` from
 Lidl Bulgaria's statutory price-transparency export: the same product's own shelf price first,
 then the category's p25 shelf price, then (low confidence only) the audit's own reference. The
@@ -108,7 +112,8 @@ Target output is **2–6 Strong Buys and 8–20 Fairs per week**. You will not h
 and the reason is structural rather than a bug: a consumable's reference price is observed, not
 guessed, so a sku is only judged once it has been *seen*. `category_p25` needs `REGULAR_MIN_N`
 (4) shelf observations for that sku — one Lidl export supplies that for many of them at once
-(measured 2026-07-31: **17 skus on the first run**), but the rest wait for a week in which Lidl
+(measured 2026-07-31 against the old 44-sku catalog: **17 skus on the first run**; not
+re-measured against the current 30-sku catalog), but the rest wait for a week in which Lidl
 happens to stock them. Until then the audit's own low-confidence reference fills the gap, and
 that caps the verdict at Fair.
 
