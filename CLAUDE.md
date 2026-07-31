@@ -351,8 +351,11 @@ old rule wrong, and each is the kind of rule a future session mistakes for noise
 - `food.milk` is UHT-only now. Fresh milk cannot be stocked up on at all, so tracking it as a
   bulk-arbitrage target was always going to be a category error.
 
-Two skus are new and each shipped with a veto validated against the 358 real Lidl product names
-in `fixtures/`:
+Twenty-one skus were deleted and seven added (`food.coffee_ground`, `food.couscous`,
+`food.lutenitsa`, `food.cottage_cheese`, `food.sausages`, `food.peas_tinned`,
+`food.chickpeas_tinned`). Two of the seven shipped with a veto validated against the 358 real
+Lidl product names in `fixtures/`, and both vetoes exist because the unvalidated rule was
+measurably wrong:
 
 - `food.sausages` deliberately vetoes `"луканк"`. An earlier draft listed `["луканка"]` in
   `any_of` and matched 8 rows, six of which were dry-cured charcuterie at ~€15–25/kg rather than
