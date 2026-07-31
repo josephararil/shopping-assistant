@@ -210,6 +210,157 @@ for d in _weird_values:
 chk("rank_score never raises for weird discount/saving combinations", not _raised)
 
 
+# ── PR-C: shelf_life_factor — the invalid-input rule ─────────────────────────
+# A missing/invalid shelf_life_days must fall back to factor 1.0 (full credit), NOT to
+# some demoted value — a naive min(1, days/180) returns -0.028 for days=-5, a NEGATIVE
+# factor that would SUBTRACT from the rank and sit outside the function's own declared
+# range (0.0, 1.0]. Silently demoting a sku for a forgotten field would look like a
+# market judgement instead of a bug, so the fallback is loud-by-omission: the real
+# guard against a forgotten field is Invariant SHELF-COVERAGE below, not a penalty here.
+_shelf_factor_cases = [
+    (180, 1.0), (90, 0.5), (550, 1.0), (None, 1.0), (0, 1.0),
+    (-5, 1.0), (1e9, 1.0), (True, 1.0), (False, 1.0), ("x", 1.0),
+]
+for value, expected in _shelf_factor_cases:
+    got = C.shelf_life_factor(value)
+    chk(f"shelf_life_factor({value!r}) == {expected}", got == expected, f"got {got}")
+    chk(f"shelf_life_factor({value!r}) stays within its declared range (0.0, 1.0]",
+        0.0 < got <= 1.0, f"got {got}")
+
+
+# ── PR-C: rank_score is monotonic in shelf_life_days ──────────────────────────
+# At a fixed discount and saving, a longer-lived product must rank ABOVE a short-lived
+# one — that is the entire point of scaling the stock-up term by shelf life.
+shelf_short = C.rank_score(0.25, 60.0, C.VERDICT_STRONG, False, shelf_life_days=21)
+shelf_long = C.rank_score(0.25, 60.0, C.VERDICT_STRONG, False, shelf_life_days=550)
+chk("rank_score: 21-day shelf life scores strictly below 550-day at equal discount/saving",
+    shelf_short < shelf_long, f"21d={shelf_short} 550d={shelf_long}")
+chk("rank_score: shelf-life monotonic case matches the pinned numbers",
+    (shelf_short, shelf_long) == (42.33, 60.0), (shelf_short, shelf_long))
+
+
+# ── PR-C: the seven-row ranking table ─────────────────────────────────────────
+# One end-to-end table exercising verdict_consumable + rank_score together across the
+# shape of skus the catalog actually holds — a stock-up-worthy target hit, three passes
+# at varying shelf life, and three that clear the discount rung but not the ABSOLUTE
+# stock-up floor. Every number here is derived the same way find_deals.py derives it:
+# discount and saving are computed in PYTHON, never asked of the LLM.
+_ranking_rows = [
+    # name,           ref,    unit,   bulk_qty, shelf_life, target_eur, gate_fails, rank
+    ("whey target hit", 30.00, 25.00, 20,   550, 25.00, False, 66.67),
+    ("olive_oil drum",  12.00,  9.00,  5,   730, None,  False, 45.00),
+    ("chicken_breast",   7.00,  5.25, 10,   120, None,  False, 43.89),
+    ("frozen_veg (floor FAILS)", 3.20, 2.40, 10, 365, None, True, 22.67),
+    ("yoghurt",          3.00,  2.25,  6,    21, None,  True, 20.18),
+    ("rice",             2.50,  2.00, 10,   540, None,  True, 17.67),
+    ("toilet_paper",     0.3825, 0.306, 40, 730, None,  True, 17.02),
+]
+for name, ref, unit, bulk_qty, shelf_life, target_eur, gate_fails, expected_rank in _ranking_rows:
+    discount = (ref - unit) / ref
+    saving = round((ref - unit) * bulk_qty, 2)
+    v, got_discount, failed = C.verdict_consumable(
+        unit, ref, C.CONF_HIGH, None, 90, 2.0, target_eur=target_eur, saving_eur=saving)
+    rank = C.rank_score(got_discount, saving, v, False, shelf_life)
+    chk(f"ranking table [{name}]: stockup_value gate " + ("fails" if gate_fails else "passes"),
+        ("stockup_value" in failed) == gate_fails, f"failed={failed}")
+    chk(f"ranking table [{name}]: rank == {expected_rank}", round(rank, 2) == expected_rank,
+        f"got {rank}")
+
+# ── PR-C: companion row for food.frozen_vegetables — the catalog's REAL bulk_qty ─────
+# The 10.0-bulk row above deliberately pins a lead that FAILS the stockup_value floor.
+# The catalog's actual bulk_qty is 22.5 (nine 2.5 kg bags — this household buys 2.5 kg
+# bags, 8-10 at a time, limited by freezer space), at which the SAME discount clears the
+# floor. Assert the catalog value itself so this test fails loudly if it ever drifts,
+# rather than silently asserting a number that no longer matches the sku it's named for.
+frozen_veg_bulk_qty = catalog.WATCHLIST["food.frozen_vegetables"]["bulk_qty"]
+chk("food.frozen_vegetables bulk_qty is the catalog's real 22.5 (9 x 2.5 kg bags)",
+    frozen_veg_bulk_qty == 22.5, frozen_veg_bulk_qty)
+
+fv_ref, fv_unit, fv_shelf = 3.20, 2.40, 365
+fv_discount = (fv_ref - fv_unit) / fv_ref
+fv_saving = round((fv_ref - fv_unit) * frozen_veg_bulk_qty, 2)
+fv_v, fv_got_discount, fv_failed = C.verdict_consumable(
+    fv_unit, fv_ref, C.CONF_HIGH, None, 90, 2.0, saving_eur=fv_saving)
+fv_rank = C.rank_score(fv_got_discount, fv_saving, fv_v, False, fv_shelf)
+chk("food.frozen_vegetables at its real bulk_qty: saving == 18.00", fv_saving == 18.00, fv_saving)
+chk("food.frozen_vegetables at its real bulk_qty: Strong Buy, no failed gates",
+    (fv_v, fv_failed) == (C.VERDICT_STRONG, []), (fv_v, fv_failed))
+chk("food.frozen_vegetables at its real bulk_qty: rank == 46.00", round(fv_rank, 2) == 46.00,
+    fv_rank)
+
+
+# ── PR-C: the stockup_value gate itself ───────────────────────────────────────
+# Strong-Buy-only floor on the ABSOLUTE money a stock-up moves — the direct successor to
+# the deleted DURABLE_MIN_ABS_SAVING_EUR. Below the floor a lead still reaches Fair
+# (repeats are demoted, not hidden); at/above it, nothing else about the lead changes.
+v, _d, failed = C.verdict_consumable(9.0, 12.0, C.CONF_HIGH, None, 90, 2.0, saving_eur=9.99)
+chk("stockup_value: saving just under STOCKUP_MIN_SAVING_EUR fails the gate",
+    "stockup_value" in failed, f"failed={failed}")
+chk("stockup_value: a lead that fails only this gate is capped below Strong Buy",
+    v != C.VERDICT_STRONG, f"got {v}")
+
+v, _d, failed = C.verdict_consumable(9.0, 12.0, C.CONF_HIGH, None, 90, 2.0, saving_eur=10.00)
+chk("stockup_value: saving AT STOCKUP_MIN_SAVING_EUR clears the gate",
+    "stockup_value" not in failed, f"failed={failed}")
+
+v, _d, failed = C.verdict_consumable(9.0, 12.0, C.CONF_HIGH, None, 90, 2.0, saving_eur=None)
+chk("stockup_value: saving_eur=None means 'not computable' and must NOT fail the gate — "
+    "inventing a rejection from a missing input is the mirror image of inventing a discount",
+    "stockup_value" not in failed, f"failed={failed}")
+
+_, _, failed_name_check = C.verdict_consumable(9.0, 12.0, C.CONF_HIGH, None, 90, 2.0, saving_eur=0.0)
+chk("stockup_value gate name string is exactly 'stockup_value'",
+    failed_name_check == ["stockup_value"], f"failed={failed_name_check}")
+
+# Gate ORDER: stockup_value is appended AFTER the evidence check and BEFORE the
+# confidence == CONF_LOW check, so a lead failing both must report them in that order.
+_, _, order_failed = C.verdict_consumable(9.0, 12.0, C.CONF_LOW, None, 90, 2.0, saving_eur=1.0)
+chk("stockup_value gate ORDER: before low_confidence_reference in failed_gates",
+    order_failed.index("stockup_value") < order_failed.index("low_confidence_reference"),
+    f"failed={order_failed}")
+
+
+# ── PR-C: target_eur still bypasses the new gate ──────────────────────────────
+# target_eur is a promote-only pre-commitment the user named themselves; it bypasses
+# every gate including this new one, exactly as it bypasses floor, fit and evidence.
+v, _d, failed = C.verdict_consumable(24.0, 30.0, C.CONF_HIGH, None, 90, 2.0,
+                                     target_eur=25.0, saving_eur=1.00)
+chk("target_eur hit bypasses stockup_value too, despite a saving_eur that would fail it",
+    (v, failed) == (C.VERDICT_STRONG, []), (v, failed))
+
+
+# ── Invariant SHELF-COVERAGE ──────────────────────────────────────────────────
+# shelf_life_factor falls back to factor 1.0 (FULL stock-up credit) for anything that
+# isn't a positive number. That means an omitted shelf_life_days on a catalog entry
+# doesn't error anywhere — it just silently ranks that sku as if it kept forever. This
+# is the ONLY thing standing between a forgotten field and an inflated ranking, so it
+# must be POSITIVE numeric, not merely present or merely numeric (a stray 0 or -1 would
+# pass "is a number" and still get the same silent full-credit fallback).
+_shelf_life_missing = []
+for sku, cfg in catalog.WATCHLIST.items():
+    days = cfg.get("shelf_life_days")
+    ok = (isinstance(days, (int, float)) and not isinstance(days, bool) and days > 0)
+    if not ok:
+        _shelf_life_missing.append((sku, days))
+chk("Invariant SHELF-COVERAGE: every WATCHLIST sku carries a positive numeric shelf_life_days",
+    _shelf_life_missing == [], _shelf_life_missing)
+chk("catalog.WATCHLIST holds exactly 30 skus", len(catalog.WATCHLIST) == 30,
+    len(catalog.WATCHLIST))
+
+
+# ── rank_score never raises: extend the weird-values grid with shelf_life_days ───
+_weird_shelf_life = [None, 0, -5, 1e9, 21, True]
+_raised_shelf = False
+for d in _weird_values:
+    for s in _weird_values:
+        for shelf in _weird_shelf_life:
+            try:
+                C.rank_score(d, s, C.VERDICT_STRONG, is_repeat=False, shelf_life_days=shelf)
+            except Exception:
+                _raised_shelf = True
+chk("rank_score never raises for weird shelf_life_days combinations", not _raised_shelf)
+
+
 # ── price_bucket and seen_key ────────────────────────────────────────────────
 cand_1pct_a = {"sku_class": "consumable", "unit_price_eur": 10.00}
 cand_1pct_b = {"sku_class": "consumable", "unit_price_eur": 10.10}
