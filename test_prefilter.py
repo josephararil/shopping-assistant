@@ -8,7 +8,7 @@ from prefilter import prefilter
 TODAY = "2026-07-30"
 
 REASONS = {
-    "expired", "no_price", "no_sku_match", "over_par",
+    "expired", "no_price", "no_sku_match", "over_reference",
     "shallow_claim", "tiny_ticket", "dup", "over_cap",
 }
 
@@ -44,7 +44,7 @@ def build_bulk(n=4000):
                 price_eur=5.0, qty=1.0, unit="kg", unit_price_eur=5.0,
             ))
         elif pattern == 1:
-            # over_par consumable: well above par*slack (par 6.00 * 1.15 = 6.9)
+            # over_reference consumable: well above reference*slack (6.00 * 1.15 = 6.9)
             out.append(offer(
                 source=src, retailer=retailer, sku="food.chicken_breast",
                 sku_class="consumable", match_conf="high",
@@ -117,7 +117,23 @@ def chk(name, cond, detail=""):
 
 # ── Run the bulk batch ────────────────────────────────────────────────────────
 bulk = build_bulk(4000)
-candidates, rejects, stats = prefilter(bulk, TODAY)
+# The observed shelf baselines the reference is computed from. These replace the
+# hardcoded par_eur values these tests used to read out of the catalog: the numbers are
+# deliberately the SAME (chicken 6.00/kg, olive oil 9.00/L) so every threshold below
+# stays pinned to exactly the value it was calibrated at.
+#
+# `spread` is narrow on purpose. prefilter does not care about confidence — it only
+# needs a number — but a wide spread here would make these fixtures quietly unlike the
+# ones test_verdicts uses, and the two files must not disagree about what a baseline is.
+def _baseline(p25):
+    return {"n": 20, "p25": p25, "p10": p25 * 0.9, "p90": p25 * 1.2, "spread": 1.333}
+
+BASELINES = {
+    "food.chicken_breast": _baseline(6.00),
+    "food.olive_oil": _baseline(9.00),
+}
+
+candidates, rejects, stats = prefilter(bulk, TODAY, BASELINES)
 
 sources_present = {o.get("source") for o in bulk}
 cap_sum = sum(C.SOURCE_CAPS.get(s, 0) for s in sources_present)
@@ -129,13 +145,51 @@ chk("every reject carries a non-empty reject_reason in the eight names",
     all(r.get("reject_reason") in REASONS for r in rejects),
     f"bad reasons: {sorted({r.get('reject_reason') for r in rejects} - REASONS)}")
 
-chk("no over_par offer ever reaches candidates",
+chk("no over_reference offer ever reaches candidates",
     all(not (c.get("sku_class") == "consumable"
              and c.get("unit_price_eur") is not None
+             and (BASELINES.get(c.get("sku")) or {}).get("p25")
              and c.get("unit_price_eur") >
-             (catalog.CATALOG.get(c.get("sku")) or {}).get("par_eur", 0) * C.PREFILTER_PAR_SLACK)
+             BASELINES[c["sku"]]["p25"] * C.PREFILTER_REFERENCE_SLACK)
         for c in candidates),
-    "an over-par consumable leaked into candidates")
+    "an over-reference consumable leaked into candidates")
+chk("the over_reference rule actually fired on this fixture",
+    stats["rejects_by_reason"].get("over_reference", 0) > 0,
+    stats["rejects_by_reason"])
+
+
+# ── NO REFERENCE MUST NEVER MEAN A REJECTION ────────────────────────────
+# A sku with no shelf history yet has nothing to compare against, and Stage 4 has not
+# run at this point so there is no LLM reference either. Rejecting on that would
+# silently and permanently discard every not-yet-observed sku — SOURCE_CAPS is the cost
+# bound here, not this rule. This is the single most dangerous way the switch from
+# par_eur to an observed reference could go wrong, because it fails as a quiet week.
+expensive = offer(source="ccc", retailer="R", sku="food.chicken_breast",
+                  sku_class="consumable", match_conf="high",
+                  price_eur=99.0, qty=1.0, unit="kg", unit_price_eur=99.0)
+c_none, r_none, _s = prefilter([dict(expensive)], TODAY)          # no baselines at all
+chk("no baselines map -> a wildly over-priced consumable is NOT rejected",
+    len(c_none) == 1 and r_none == [], (len(c_none), [r.get("reject_reason") for r in r_none]))
+
+c_empty, r_empty, _s = prefilter([dict(expensive)], TODAY, {})     # empty map
+chk("empty baselines map -> still no rejection", len(c_empty) == 1 and r_empty == [])
+
+c_unseen, r_unseen, _s = prefilter([dict(expensive)], TODAY,
+                                   {"food.olive_oil": _baseline(9.00)})  # other sku only
+chk("a baselines map missing THIS sku -> still no rejection",
+    len(c_unseen) == 1 and r_unseen == [])
+
+# ...but WITH a reference, the same offer must be rejected. Otherwise the assertions
+# above would pass for a version of prefilter that never rejects anything.
+c_ref, r_ref, _s = prefilter([dict(expensive)], TODAY, BASELINES)
+chk("the SAME offer with a reference present IS rejected over_reference",
+    c_ref == [] and len(r_ref) == 1 and r_ref[0]["reject_reason"] == "over_reference",
+    [r.get("reject_reason") for r in r_ref])
+
+# A survivor carries the reference it was judged against, so the email's reject footer
+# can print the real numbers instead of a bare reason string.
+chk("the reject records the reference it was measured against",
+    r_ref[0].get("reference_eur") == 6.00, r_ref[0].get("reference_eur"))
 
 chk("discovery never admits a consumable, whatever its claimed discount",
     all(not (c.get("sku", "").startswith("disc.") and c.get("sku_class") == "consumable")
@@ -207,7 +261,7 @@ chk("dedup keeps the cheapest unit price, not the first seen",
 # over_cap drops the LEAST attractive: seed one source with cap+5 valid consumables
 # at known discounts, assert survivors are the top `cap` by discount_vs_par.
 cap = C.SOURCE_CAPS["ccc"]
-par = catalog.CATALOG["food.olive_oil"]["par_eur"]  # 9.00
+par = BASELINES["food.olive_oil"]["p25"]  # the observed 9.00/L reference
 n_seed = cap + 5
 seed = []
 discounts = []
@@ -220,10 +274,10 @@ for i in range(n_seed):
                        sku_class="consumable", match_conf="high",
                        price_eur=unit_price, qty=1.0, unit="L",
                        unit_price_eur=unit_price))
-cands, rejs, _ = prefilter(seed, TODAY)
+cands, rejs, _ = prefilter(seed, TODAY, BASELINES)
 kept_discounts = sorted((round(1 - c["unit_price_eur"] / par, 4) for c in cands), reverse=True)
 expected_top = sorted(discounts, reverse=True)[:cap]
-chk("over_cap keeps the top `cap` by discount_vs_par, drops the rest",
+chk("over_cap keeps the top `cap` by discount vs the observed reference, drops the rest",
     len(cands) == cap and kept_discounts == expected_top,
     f"kept {len(cands)} of cap {cap}; kept_discounts={kept_discounts} expected={expected_top}")
 chk("over_cap overflow is rejected over_cap",

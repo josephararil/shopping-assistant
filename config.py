@@ -162,9 +162,9 @@ SOURCE_CAPS = {
 DEFAULT_SOURCE_CAP = 8
 
 # A matched consumable whose unit price is plainly not a deal costs ZERO LLM tokens:
-# rejected as `over_par` and rendered in the email's reject footer with real numbers.
+# rejected as `over_reference` and rendered in the email's reject footer with real numbers.
 # Slack above par so a borderline item still gets audited.
-PREFILTER_PAR_SLACK = 1.15
+PREFILTER_REFERENCE_SLACK = 1.15
 
 # Durables cannot be prefiltered on price (the normal price is not known yet), only on
 # CLAIMED discount steepness. This is what stops "washing machine 10% off" before it
@@ -218,7 +218,7 @@ REGULAR_ALLOWED_SOURCES = {"corroborate", "lidl_regular"}
 #
 # This is the most valuable source in the pipeline and not because of its promotions: the
 # `Цена` column is a genuine non-promo shelf price, which is the ONLY thing that can
-# populate the `regular` series. Without it, effective_par and the regular_median evidence
+# populate the `regular` series. Without it the observed baseline and the regular_median evidence
 # leg stay dead until the corroborate stage has slowly built ~12 weeks of history.
 LIDL_EXPORT_URLS = [
     "https://www.lidl.bg/explore/assets/webPriceData/bg/ExportFirstList.xlsx",
@@ -245,13 +245,21 @@ LIDL_HTTP_TIMEOUT = 180
 # Lowering MIN_EVIDENCE_* is how this becomes a spam email. Tune the discount rungs
 # instead.
 EVIDENCE_WEIGHTS = {
-    # A consumable's reference is the user's own hand-set par_eur. That is the most
-    # credible reference in the system — the user pre-committed to it — so it carries
-    # full weight. Without this leg no consumable could ever clear MIN_EVIDENCE_FAIR
-    # from a leaflet (whose only other leg is retailer_claim at 0.2), and the entire
-    # consumable half of the digest would sit at Fair for ~12 weeks while looking
-    # like correct ruthless behaviour. Granted ONLY when a hand-set par exists.
-    "user_par":       1.0,
+    # The product's OWN statutory shelf price, from the same export row as the promo
+    # price (reference level own_shelf). Bulgarian law requires that figure to be the
+    # lowest of the preceding 30 days, so it is not a marketing claim — it is the
+    # strongest reference this pipeline can obtain, and exactly like-for-like.
+    "own_shelf":      1.0,
+    # p25 of the sku's observed Lidl shelf prices (reference level category_p25). Also
+    # statutory, but across DIFFERENT products within the sku rather than the same one.
+    #
+    # These two replace the old `user_par` leg, which existed because a consumable's
+    # reference used to be the user's own hand-set par_eur. Without a full-weight leg
+    # here, a leaflet consumable's total evidence is 0.2 against a 1.0 bar, so NO
+    # consumable could ever clear MIN_EVIDENCE_FAIR and the entire consumable half of
+    # the digest would sit at Fair while looking like correct ruthless behaviour.
+    # A legally mandated shelf price is far stronger evidence than a guessed par was.
+    "statutory_shelf": 1.0,
     # The retailer's own "was" claim (leaflet strikethrough, Technopolis "-30%").
     # Deliberately near-worthless: alone, or with any ONE other weak leg, it cannot
     # reach MIN_EVIDENCE_STRONG. That is the whole answer to an inflated baseline.
@@ -317,14 +325,40 @@ PROMO_FLOOR_MIN_N      = 4     # below this, promo_floor is None and near_floor 
                                # just "the cheapest thing we happened to see", and
                                # gating Strong Buy on it would suppress at random.
 
-# effective_par PROPOSES, never overwrites. The user's hand-set par is authoritative;
-# the pipeline may nudge it by at most this fraction, and only from the REGULAR series.
-# Removing this clamp reintroduces silent par erosion — failure mode #1.
-PAR_DRIFT_MAX = 0.15
+# ── The observed baseline: what replaced par_eur ────────────────────────────
+# Consumables used to be judged against 44 hardcoded €/kg guesses. They were wrong in
+# both directions at once — house.shampoo's €8.00 par made a €3.79/L Amazon deal a
+# Strong Buy when Lidl's own shelf shampoo is €2.89, and supp.whey_protein's €19.00 par
+# made €22.50/kg a Skip when the user's real bar is €25. Any static number also decays
+# with inflation, and every one of them came from stale model training data.
+#
+# The reference is now OBSERVED and ROLLING: what Bulgaria's cheapest grocer actually
+# charges for this product, from its statutory price export.
+BASELINE_WINDOW_DAYS = 120   # the reference always reflects roughly the last four
+                             # months. HISTORY_MAX_DAYS (540) keeps the raw
+                             # observations far longer for inspection; this bounds only
+                             # what the reference COMPUTATION sees, so the number tracks
+                             # inflation instead of averaging over it.
+BASELINE_PERCENTILE  = 0.25  # p25, not mean or median: "the cheapest ordinary version
+                             # of this product at the cheapest grocer". That is what
+                             # this household actually buys, it is robust to the long
+                             # gourmet tail that wrecks a mean (food.pasta reaches
+                             # €47/kg), and it is the stricter choice.
+BASELINE_MAX_SPREAD  = 2.0   # p90/p10 above this means the sku mixes product grades, so
+                             # its p25 is not like-for-like. Measured: 18 of 27 skus do.
+                             # Those are capped at Fair (see verdict_consumable) and
+                             # listed in the email's maintenance block as "split this
+                             # sku" — a finite visible to-do list rather than a silent
+                             # wrong number.
 
-# A sustained gap between the user's par and the regular median surfaces as a
-# "par review" line in the email — a human decision, never an automatic one.
-PAR_REVIEW_MIN_GAP = 0.20
+# Reference levels, tried in this order by reference_for(). The level used is recorded
+# in the ledger and rendered in the email, so every verdict is auditable.
+REF_OWN_SHELF    = "own_shelf"      # L1 — the same product code's own shelf price
+REF_CATEGORY_P25 = "category_p25"   # L2 — p25 of the sku's Lidl shelf prices
+REF_LLM          = "llm_reference"  # L3 — the audit's reference_price_eur
+
+CONF_HIGH = "high"
+CONF_LOW  = "low"
 
 
 def percentile(values, pct):
@@ -353,28 +387,53 @@ def promo_floor(stats):
     return promo.get("p10")
 
 
-def effective_par(sku_cfg, stats):
-    """The par the verdict actually uses. PROPOSES, never overwrites.
+def reference_for(cand, baseline):
+    """-> (reference_eur, level, confidence). The price a discount is measured AGAINST.
 
-    The user's hand-set par_eur is authoritative. The pipeline may nudge it toward the
-    observed REGULAR median by at most PAR_DRIFT_MAX, and ONLY from the regular series
-    (never from promo prices — every lead here is a promo by construction, so a par
-    blended from them walks downhill weekly until the pipeline goes silent, invisibly).
+    Three levels, tried in order; the first hit wins. EVERY value is a UNIT price
+    (€/kg, €/L, €/pc) and never a pack price — the caller normalises before we get here.
 
-    Returns (par_eur, drift) where drift is the applied fraction (0.0 when no usable
-    regular evidence). Returns (None, 0.0) when the sku has no hand-set par."""
-    par = (sku_cfg or {}).get("par_eur")
-    if not isinstance(par, (int, float)) or par <= 0:
-        return None, 0.0
-    reg = (stats or {}).get("regular") or {}
-    median = reg.get("median")
-    if (not isinstance(median, (int, float)) or median <= 0
-            or (reg.get("n") or 0) < REGULAR_MIN_N
-            or (reg.get("span_days") or 0) < REGULAR_MIN_SPAN_DAYS):
-        return par, 0.0
-    lo, hi = par * (1 - PAR_DRIFT_MAX), par * (1 + PAR_DRIFT_MAX)
-    clamped = max(lo, min(hi, median))
-    return round(clamped, 4), round(clamped / par - 1, 4)
+      L1 own_shelf     the SAME product code's own statutory shelf price, from the same
+                       export row as the promo price. Exact like-for-like, and
+                       Bulgarian law requires it to be the lowest of the preceding 30
+                       days, so it is not a marketing claim. Always high confidence.
+      L2 category_p25  p25 of the sku's observed Lidl shelf prices inside
+                       BASELINE_WINDOW_DAYS. Statutory too, but across DIFFERENT
+                       products within one sku — so its confidence depends on how wide
+                       that sku's grade mix is (see BASELINE_MAX_SPREAD).
+      L3 llm_reference the audit's reference_price_eur. Always LOW confidence, which
+                       caps it at Fair in verdict_consumable. No LLM-supplied number is
+                       ever the authority on price.
+
+    L1 is restricted to `source == "lidl"` deliberately. Every source carries a
+    `was_price_eur`, but only Lidl's is a statutory declaration; camelcamelcamel's and
+    mydealz's are retailer claims worth 0.2-0.3 of an evidence leg, and treating one as
+    a reference would let a seller set its own denominator — the exact marketing
+    nonsense this pipeline exists to reject.
+
+    `baseline` is history.baseline_stats(hist, sku). Returns (None, None, None) when no
+    reference of any kind is available; the caller must Skip rather than invent one.
+    """
+    cand = cand or {}
+    qty = cand.get("qty")
+
+    was = cand.get("was_price_eur")
+    if (cand.get("source") == "lidl" and isinstance(was, (int, float)) and was > 0
+            and isinstance(qty, (int, float)) and qty > 0):
+        return round(was / qty, 4), REF_OWN_SHELF, CONF_HIGH
+
+    baseline = baseline or {}
+    p25 = baseline.get("p25")
+    if isinstance(p25, (int, float)) and p25 > 0 and (baseline.get("n") or 0) >= REGULAR_MIN_N:
+        spread = baseline.get("spread")
+        wide = isinstance(spread, (int, float)) and spread > BASELINE_MAX_SPREAD
+        return round(p25, 4), REF_CATEGORY_P25, (CONF_LOW if wide else CONF_HIGH)
+
+    llm_ref = cand.get("reference_price_eur")
+    if isinstance(llm_ref, (int, float)) and llm_ref > 0:
+        return round(llm_ref, 4), REF_LLM, CONF_LOW
+
+    return None, None, None
 
 
 # ── Verdict thresholds ──────────────────────────────────────────────────────
@@ -420,8 +479,14 @@ RANK_VERDICT_BONUS    = 20
 RANK_REPEAT_PENALTY   = 15
 
 
-def verdict_consumable(unit_price_eur, par_eur, floor, fit_score, evidence):
-    """Beat the par AND be near the historical promo floor.
+def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, evidence,
+                       target_eur=None):
+    """Beat the observed reference AND be near the historical promo floor.
+
+    Cheap versus other shops AND cheap versus its own history — the two questions are
+    orthogonal and a Strong Buy must answer both. `promo_floor` keeps its existing job
+    ("is this deeper than this product's USUAL promotion?"); the reference answers "is
+    this cheap compared to just buying it at the cheapest grocer?".
 
     Returns (verdict, discount, failed_gates). `failed_gates` is the list of gate names
     that blocked a Strong Buy — the calibration instrument. Read the failed_gates
@@ -429,12 +494,25 @@ def verdict_consumable(unit_price_eur, par_eur, floor, fit_score, evidence):
       discount dominates   -> CONSUMABLE_STRONG_DISCOUNT is too high
       evidence dominates   -> corroboration is under-firing; RAISE
                               MAX_CORROBORATE_PER_RUN, do NOT lower the evidence bar
-      near_floor dominates -> pars are set above what the market routinely does
+      near_floor dominates -> the market routinely beats the observed reference
       fit dominates        -> the watchlist holds items the household does not want
+      low_confidence_reference dominates -> too many skus mix grades; split them (the
+                              email's maintenance block names which)
     """
-    if unit_price_eur is None or not par_eur:
-        return VERDICT_SKIP, 0.0, ["no_price_or_par"]
-    discount = 1 - unit_price_eur / par_eur
+    # A target_eur is an absolute PROMOTE-ONLY pre-commitment, mirroring a durable's
+    # trigger_eur: the user named this number themselves, so no baseline inflation can
+    # fake it and no other gate applies. It is NEVER a discount denominator — a
+    # pre-commitment is a floor on the user's willingness to buy, not a market price.
+    if (target_eur and unit_price_eur is not None and unit_price_eur <= target_eur):
+        discount = 1 - unit_price_eur / reference if reference else 0.0
+        return VERDICT_STRONG, discount, []
+
+    if unit_price_eur is None or not reference:
+        # No reference of any kind. Skipping is the honest answer — inventing a
+        # denominator is how a pipeline manufactures discounts.
+        return VERDICT_SKIP, 0.0, ["no_reference"]
+
+    discount = 1 - unit_price_eur / reference
     near_floor = floor is None or unit_price_eur <= floor * PROMO_FLOOR_SLACK
     failed = []
     if discount < CONSUMABLE_STRONG_DISCOUNT:
@@ -445,6 +523,12 @@ def verdict_consumable(unit_price_eur, par_eur, floor, fit_score, evidence):
         failed.append("fit")
     if (evidence or 0) < MIN_EVIDENCE_FAIR:
         failed.append("evidence")
+    if confidence == CONF_LOW:
+        # A hard Fair ceiling, in CODE rather than in a threshold — the same reasoning
+        # as OFFLIST_FAIR_CEILING. It catches two cases: an L3 llm_reference (no
+        # LLM-supplied number is ever the authority on price) and a wide-spread L2
+        # whose p25 averages across product grades that are not the same thing.
+        failed.append("low_confidence_reference")
     if not failed:
         return VERDICT_STRONG, discount, []
     if discount >= CONSUMABLE_FAIR_DISCOUNT:
@@ -503,15 +587,15 @@ def rank_score(discount, saving_eur, verdict, is_repeat=False):
 def saving_eur_for(cand):
     """The real money moved by acting on this lead.
 
-    Consumables: (par - unit_price) * bulk_qty — what "buy 5 kg and freeze" actually
-    saves, which is the number the user reasons with. Durables: ref - price.
+    Consumables: (reference - unit_price) * bulk_qty — what "buy 5 kg and freeze"
+    actually saves, which is the number the user reasons with. Durables: ref - price.
     Returns None when the inputs to make it honest are missing."""
     if cand.get("sku_class") == "consumable":
-        par  = cand.get("par_eur")
+        ref  = cand.get("reference_eur")
         unit = cand.get("unit_price_eur")
         bulk = cand.get("bulk_qty")
-        if par and unit is not None and bulk:
-            return round((par - unit) * bulk, 2)
+        if ref and unit is not None and bulk:
+            return round((ref - unit) * bulk, 2)
         return None
     ref, price = cand.get("reference_price_eur"), cand.get("price_eur")
     if ref and price is not None:

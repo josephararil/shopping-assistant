@@ -109,7 +109,7 @@ def slug(name):
 
 
 def unit_of(sku):
-    """The base unit ("kg" | "L" | "pc") a sku's par_eur is denominated in, or None."""
+    """The base unit ("kg" | "L" | "pc") a sku's unit price is denominated in, or None."""
     return (catalog.CATALOG.get(sku) or {}).get("unit")
 
 

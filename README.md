@@ -32,9 +32,14 @@ Three LLM calls per week, hard-capped candidate counts, no paid APIs, no scrapin
 product pages. The whole thing fits inside the free tiers.
 
 `config.py` is the frozen contract — every threshold, prompt and schema lives there and nowhere
-else. `catalog.py` is your data: 44 consumables with a `par_eur` (what you consider a good price
-per kilo or litre) and 18 durables with a `trigger_eur` (the price at which you would actually
-buy). Editing the catalog is the main way you steer this thing.
+else. `catalog.py` is your data: 44 consumables and 18 durables with a `trigger_eur` (the price
+at which you would actually buy). Consumables no longer carry a hand-set target price — their
+reference is *observed*, computed by `config.reference_for()` from Lidl Bulgaria's statutory
+price-transparency export: the same product's own shelf price first, then the category's p25
+shelf price, then (low confidence only) the audit's own reference. The one exception is
+`target_eur`, an absolute promote-only pre-commitment mirroring `trigger_eur`, currently set on a
+single sku (`supp.whey_protein`, at EUR 25.00/kg). Editing the catalog is still the main way you
+steer this thing.
 
 ## Setup
 
@@ -53,9 +58,11 @@ load-bearing rather than housekeeping: `state/price_history.json` is this projec
 for a paid price-history API. It is worthless in week 1 and decisive by week 12, and it only
 accumulates because CI commits it back after every run.
 
-Then edit `catalog.py`. Set a `par_eur` on the consumables you actually buy and a `trigger_eur`
-on the durables you actually want. **Catalog slugs are permanent identifiers** — renaming one
-resets that product's price history and its alert-suppression window.
+Then edit `catalog.py`. Set a `trigger_eur` on the durables you actually want. Consumables need
+no manual target — their reference price is learned from the Lidl statutory export — unless you
+want a hard pre-commitment, which is what `target_eur` is for. **Catalog slugs are permanent
+identifiers** — renaming one resets that product's price history and its alert-suppression
+window.
 
 Locally: `pip install -r requirements.txt` (that is `requests` + `python-dotenv`, and the list
 does not grow — RSS is parsed with stdlib `xml.etree`, HTML with `re`), and put the same
@@ -100,9 +107,17 @@ npm run dev --prefix web
 ## Calibration — weeks 1 to 4 are not production
 
 Target output is **2–6 Strong Buys and 8–20 Fairs per week**. You will not hit that in week 1,
-and the reason is structural rather than a bug: your `par_eur` values are guesses until the
-market corrects them, and `promo_floor` — the 10th percentile of everything a product has ever
-been promoted at — needs roughly six weeks of observations before it means anything.
+and the reason is structural rather than a bug: a consumable's reference price is observed, not
+guessed, so a sku is only judged once it has been *seen*. `category_p25` needs `REGULAR_MIN_N`
+(4) shelf observations for that sku — one Lidl export supplies that for many of them at once
+(measured 2026-07-31: **17 skus on the first run**), but the rest wait for a week in which Lidl
+happens to stock them. Until then the audit's own low-confidence reference fills the gap, and
+that caps the verdict at Fair.
+
+`BASELINE_WINDOW_DAYS` (120) is not a warm-up period — it is a ceiling on how far back the
+reference looks, so the number tracks inflation instead of averaging over a year and a half of
+it. `promo_floor` is the slow one: the 10th percentile of everything a product has been promoted
+at needs roughly six weeks of observations before it means anything.
 
 So do not tune by feel. **Read the `failed_gates` histogram in `state/last_run.json` first.** It
 records which gate each rejected lead died on, and it points at exactly one knob:
@@ -112,8 +127,9 @@ records which gate each rejected lead died on, and it points at exactly one knob
 | `discount` | the discount rungs are set above what this market does | lower `CONSUMABLE_STRONG_DISCOUNT` |
 | `evidence` | corroboration is under-firing | **raise `MAX_CORROBORATE_PER_RUN`. Do not lower the evidence bar.** |
 | `abs_savings` | the watchlist is full of low-ticket items | prune the catalog |
-| `near_floor` | your pars are above what the market routinely does | lower the pars |
+| `near_floor` | the market routinely beats the observed reference | nothing to tune — the reference is already what shops charge |
 | `fit` | the watchlist holds things the household does not want | prune the catalog |
+| `low_confidence_reference` | too many skus mix product grades | split them; the email's Catalog maintenance block names exactly which ones |
 
 The one rule with no exceptions: **lowering `MIN_EVIDENCE_*` is how this becomes a spam email.**
 The evidence model scores how much you should trust the *"before"* price, which is precisely
@@ -126,9 +142,10 @@ Read `CLAUDE.md`. It is not a style guide — it is the list of invariants that 
 together, and each one records a decision that a future implementer will otherwise cheerfully
 undo. The short version of the most expensive ones:
 
-- Only genuine non-promo evidence may move a par. Every feed here is a promotions feed, so a par
-  learned from them walks downhill every week until nothing qualifies and the digest goes
-  silently empty. That is the most likely way this design fails, and it fails invisibly.
+- Only genuine non-promo evidence builds a reference. Every feed here except the Lidl statutory
+  export is a promotions feed, so a reference learned from them would walk downhill every week
+  until nothing qualifies and the digest goes silently empty — `own_shelf` and `category_p25`
+  come only from the Lidl export's own shelf-price column, never from a promo price.
 - Rejected offers are still recorded as promo observations. They carry the most information
   about what a *normal* promo looks like.
 - Nothing keys on prose. `sku` is the key everywhere; `name` is display-only.

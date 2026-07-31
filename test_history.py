@@ -158,22 +158,53 @@ def run():
     chk(f"promo_floor None at n={C.PROMO_FLOOR_MIN_N - 1}", C.promo_floor(stats_thin) is None)
     chk(f"promo_floor real at n={C.PROMO_FLOOR_MIN_N}", C.promo_floor(stats_ok) == 5.0)
 
-    # ── C.effective_par: unchanged when thin, clamped within PAR_DRIFT_MAX when not ──
-    sku_cfg = catalog.CATALOG[SKU]  # par_eur = 12.00
+    # ── history.baseline_stats: the observed reference that replaced par_eur ──
     catalog_before = copy.deepcopy(catalog.CATALOG)
-    par = sku_cfg["par_eur"]
 
-    thin_stats = {"regular": {"n": C.REGULAR_MIN_N - 1, "median": par * 3, "span_days": 100}}
-    par_thin, drift_thin = C.effective_par(sku_cfg, thin_stats)
-    chk("effective_par unchanged when regular series is thin", par_thin == par and drift_thin == 0.0,
-        (par_thin, drift_thin))
+    histb = history.load()
+    # Twelve shelf observations: 1..12, so p25 is deterministic under nearest-rank
+    # (index ceil(0.25*12)-1 = 2 -> the third-smallest = 3.0).
+    for i, price in enumerate(range(1, 13)):
+        history.record_regular(histb, SKU, float(price), source="lidl_regular",
+                               retailer="Lidl", product_code=f"code{i}", name=f"p{i}")
+    b = history.baseline_stats(histb, SKU)
+    chk("baseline_stats counts every in-window observation", b["n"] == 12, b)
+    chk("baseline_stats p25 uses C.percentile, not a second implementation",
+        b["p25"] == C.percentile([float(x) for x in range(1, 13)], C.BASELINE_PERCENTILE), b)
+    chk("baseline_stats spread is p90/p10", b["spread"] == round(b["p90"] / b["p10"], 3), b)
+    chk("a 1..12 series is WIDE by definition", b["spread"] > C.BASELINE_MAX_SPREAD, b)
 
-    far_stats = {"regular": {"n": C.REGULAR_MIN_N + 1, "median": par * 3, "span_days": C.REGULAR_MIN_SPAN_DAYS + 5}}
-    par_far, drift_far = C.effective_par(sku_cfg, far_stats)
-    lo, hi = par * (1 - C.PAR_DRIFT_MAX), par * (1 + C.PAR_DRIFT_MAX)
-    chk("effective_par never exceeds par*(1+PAR_DRIFT_MAX)", par_far <= hi + 1e-9, par_far)
-    chk("effective_par never drops below par*(1-PAR_DRIFT_MAX)", par_far >= lo - 1e-9, par_far)
-    chk("effective_par does not mutate catalog.CATALOG", catalog.CATALOG == catalog_before)
+    # A narrow series must read as high-confidence, or every sku is Fair-capped forever.
+    histn = history.load()
+    for i, price in enumerate([4.0, 4.2, 4.4, 4.6, 4.8, 5.0]):
+        history.record_regular(histn, SKU, price, source="lidl_regular",
+                               retailer="Lidl", product_code=f"n{i}", name=f"n{i}")
+    bn = history.baseline_stats(histn, SKU)
+    chk("a tight series is NOT flagged wide", bn["spread"] <= C.BASELINE_MAX_SPREAD, bn)
+
+    # THE WINDOW IS LOAD-BEARING. Observations older than BASELINE_WINDOW_DAYS must be
+    # excluded even though prune keeps them for HISTORY_MAX_DAYS (540) — the reference is
+    # meant to track inflation, not average over a year and a half of it.
+    histw = history.load()
+    old_day = (dt.date.today() - dt.timedelta(days=C.BASELINE_WINDOW_DAYS + 30)).isoformat()
+    for i in range(6):
+        history.record_regular(histw, SKU, 99.0, source="lidl_regular",
+                               retailer="Lidl", product_code=f"old{i}", name="stale")
+        histw["skus"][SKU]["regular"][-1]["d"] = old_day
+    for i in range(6):
+        history.record_regular(histw, SKU, 5.0, source="lidl_regular",
+                               retailer="Lidl", product_code=f"new{i}", name="fresh")
+    bw = history.baseline_stats(histw, SKU)
+    chk("baseline_stats excludes observations older than BASELINE_WINDOW_DAYS",
+        bw["n"] == 6 and bw["p25"] == 5.0, bw)
+    chk("...while the raw series still holds all 12 for inspection",
+        len(histw["skus"][SKU]["regular"]) == 12)
+
+    empty_b = history.baseline_stats(history.load(), "food.nonexistent_sku")
+    chk("baseline_stats on an unknown sku is empty, not an exception",
+        empty_b == {"n": 0, "p25": None, "p10": None, "p90": None, "spread": None}, empty_b)
+
+    chk("baseline_stats does not mutate catalog.CATALOG", catalog.CATALOG == catalog_before)
 
     # ── regular_median evidence conditions: n=3 unusable, n=4 spanning 21+ days usable ──
     hist5 = history.load()

@@ -50,20 +50,21 @@ sits below every `trigger_eur` in the catalog, and a trigger hit deliberately by
 other gate, so nothing downstream could have caught it. Ten regressions in `test_match.py` guard
 the separator handling. Treat any money parser as load-bearing.
 
-### Observations split `promo` / `regular`; only `regular` may inform a par
+### Observations split `promo` / `regular`; only `regular` may inform the reference
 Every source feeding this pipeline is a promotions feed, so every price it observes is a promo
-price **by construction**. A par learned from them walks downhill every week until nothing
+price **by construction**. A reference learned from them walks downhill every week until nothing
 qualifies and the digest goes silently empty — the most likely way this design fails, and it
 fails invisibly.
 
 - `promo` ← every sku-matched offer, **kept OR rejected**. Rejects carry the most information
   about what a *normal promo* looks like: a store that never records the €15/kg weeks will think
   €12/kg is expensive. Feeds `promo_floor()` = p10 of the promo series.
-- `regular` ← only genuine non-promo evidence: Stage-5 comparator listings.
+- `regular` ← only genuine non-promo evidence: Lidl's statutory shelf prices and Stage-5
+  comparator listings. This is the series `reference_for`'s L2 reads.
 
 `history.record_regular` enforces this with an **allowlist** (`C.REGULAR_ALLOWED_SOURCES`), and it
 must stay an allowlist. It began as a denylist of the single string `"broshura"`, which grants
-every *new* source par-moving access by default — and that had already bitten: test fixtures were
+every *new* source reference-moving access by default — and that had already bitten: test fixtures were
 writing `source="ccc"` into `regular`, treating an Amazon price-drop feed as non-promo evidence.
 
 ### A `regular` observation carries an identity, and upserts on `(d, product_code)`
@@ -87,18 +88,64 @@ contributes **32 rows in a single week**. Under one shared cap of 40 the heavy s
 wholly replaced every run, so no rolling window could ever see more than one week of shelf
 prices. It would look populated and be blind.
 
-### `effective_par` clamps to the user's par and never overwrites it
-The pipeline may nudge a par by at most `PAR_DRIFT_MAX` (0.15), from the **regular series only**.
-A sustained gap surfaces as a par-review line in the email — a human decision, not an automatic
-one. Removing the clamp reintroduces silent par erosion.
+### The reference is OBSERVED, in three levels, and the level is always reported
+`par_eur` is gone. All 44 of them were guesses from stale model training data, and they were
+wrong in **both** directions at once: an €8.00 shampoo par made a €3.79/L Amazon deal a Strong
+Buy when Lidl's own shelf shampoo is €2.89, while a €19.00 whey par made €22.50/kg a Skip. Any
+static number also decays with inflation. `config.reference_for()` tries three levels in order:
 
-The clamp is why `find_deals.par_review_lines` must exist and must stay wired: a par set 40% away
-from what shops genuinely charge is clamped to 15% and then used **forever**, self-consistently,
-with nothing erroring and the user never learning their number is wrong. `PAR_REVIEW_MIN_GAP`
-(0.20) is the reporting threshold, and the line reports without changing anything. It reads the
-**regular series only** — a gap measured against promo prices is just the discount, and surfacing
-it would train the user to chase their par downhill every week, which is failure mode #1 wearing
-a helpful face. In weeks 1–4 this is the highest-value line in the digest.
+| level | reference | confidence |
+|---|---|---|
+| L1 `own_shelf` | the **same product code's** own statutory shelf price, from the same export row as the promo price | high |
+| L2 `category_p25` | **p25** of that sku's observed Lidl shelf prices within `BASELINE_WINDOW_DAYS` (120) | high, or **low** when `p90/p10 > BASELINE_MAX_SPREAD` (2.0) |
+| L3 `llm_reference` | the audit's `reference_price_eur` | **low, always** |
+| none | — | Skip. Never invent a denominator. |
+
+**L1 is Lidl-only.** Every source carries a `was_price_eur`, but only Lidl's is a statutory
+declaration — Bulgarian law requires it to be the lowest of the preceding 30 days. An Amazon
+"was" is a retailer claim worth 0.2–0.3 of an evidence leg, and promoting one to a *reference*
+would let a seller set its own denominator: precisely the marketing nonsense this pipeline
+exists to reject.
+
+**p25, not mean or median.** It reads as "the cheapest ordinary version of this product at the
+cheapest grocer", which is what this household buys, is robust to the long gourmet tail that
+wrecks a mean (`food.pasta` reaches €47/kg), and is the stricter choice.
+
+**`BASELINE_WINDOW_DAYS` (120) bounds the reference computation only.** `HISTORY_MAX_DAYS` (540)
+still keeps the raw observations, so the reference tracks inflation instead of averaging over a
+year and a half of it. `history.baseline_stats` computes on READ and never stores: the window is
+relative to today, so a stored value goes stale silently.
+
+**`promo_floor` keeps its existing job** — "is this deeper than this product's *usual* promotion?"
+— unchanged and orthogonal. A consumable Strong Buy must beat the shelf reference **and** sit near
+its own promo floor: cheap versus other shops and cheap versus its own history.
+
+### A low-confidence reference is capped at Fair, in code
+Two cases share the ceiling: an L3 `llm_reference` (**no LLM-supplied number is ever the authority
+on price**) and a wide-spread L2 whose p25 averages across product grades that are not the same
+thing. It is a `low_confidence_reference` entry in `failed_gates`, enforced in code and not by a
+threshold, for exactly the reason `OFFLIST_FAIR_CEILING` is: a tuning mistake must not be able to
+open a spam vector.
+
+`find_deals.maintenance_lines` is the visible half, and is the direct successor to the deleted
+par-review block. The reasoning is the same shape: `verdict_consumable` handles a wide-spread sku
+SAFELY, and therefore **silently** — nothing errors while the sku quietly never reaches Strong Buy
+again. Measured 2026-07-31, 18 of 27 observed skus are over the threshold, and `food.pasta` mixing
+€1.98 durum with €47.67 boutique is a *catalog* problem, not a market fact. The block turns that
+into a finite, shrinking to-do list. It reads the same windowed series the reference reads, so the
+line always describes the number the verdicts actually used.
+
+### `target_eur` and `trigger_eur` are PROMOTE-ONLY, and must never be guessed
+`target_eur` (consumable, per unit) mirrors `trigger_eur` (durable, per item): the user named the
+number themselves, so no baseline inflation can fake it and no other gate applies. **Neither is
+ever a discount denominator** — a pre-commitment is a bound on the user's willingness to buy, not
+a market price.
+
+Because they bypass every gate, they are the most dangerous values in the system. Set one **only**
+where the user genuinely holds a number. As of the 2026-07-31 interview exactly one exists:
+`supp.whey_protein` at €25.00/kg. Salmon was proposed at €19/kg and deliberately **not** set — the
+user buys it at €18/kg *normally*, so a €19 trigger is always-on, which is a spam vector rather
+than a pre-commitment.
 
 ### `ref_evidence` scores REFERENCE credibility, never OFFER credibility
 Offer credibility is near-constant across these feeds. **The "before" price is where marketing
@@ -108,11 +155,14 @@ camelcamelcamel's unverifiable `from X€`.
 
 **Lowering `MIN_EVIDENCE_*` is how this becomes a spam email. Tune the discount rungs instead.**
 
-The `user_par` leg (1.0) is granted only where the sku has a hand-set `par_eur`. It exists because
-without it a leaflet consumable's total evidence is 0.2 against a 1.0 bar, so **no consumable
-could ever reach Strong Buy** and the whole consumable half of the digest would sit at Fair for
-~12 weeks while looking like correct ruthless behaviour. A consumable's reference *is* the user's
-own par, which is the most credible reference in the system. Durables have no par and so get no
+The `own_shelf` and `statutory_shelf` legs (1.0 each) are granted by the reference LEVEL a
+consumable landed on — L1 and L2 respectively. **L3 grants no leg**, because an LLM-supplied
+number is not evidence about itself. They replaced a `user_par` leg that was granted for having
+a hand-set par at all, and they exist for the same reason it did: without a full-weight leg here
+a leaflet consumable's total evidence is 0.2 against a 1.0 bar, so **no consumable could ever
+reach Strong Buy** and the whole consumable half of the digest would sit at Fair while looking
+like correct ruthless behaviour. The replacement is strictly better evidence: a legally mandated
+shelf price rather than a number the user guessed. Durables have no shelf export and so get no
 leg — which is what keeps the bar meaningful for them.
 
 ### `trap_detected` is a reported observation, not a veto
@@ -263,7 +313,7 @@ breaks.
 
 **The Lidl export is the only source that can populate `regular`.** Everything else here is a
 promotions feed, so `Цена` on the statutory export is the single genuine non-promo shelf price
-the pipeline ever sees. Without it the 1.0-weight `regular_median` leg and `effective_par` stay
+the pipeline ever sees. Without it the `statutory_shelf` leg and the L2 reference stay
 dead until corroboration slowly builds a history. Measured live on 2026-07-31 it contributes
 **187 regular observations across 25 skus per run** — up from 22 across 13 before `net_qty`,
 because 165 of those shelf rows carry no quantity anywhere in their product name — which
@@ -306,7 +356,7 @@ Parsing it correctly is load-bearing, and the way it breaks is silent:
 
 `Нетно количество` is the manufacturer's statutory net-quantity declaration and beats any name
 parse — it settles `Боб насипен 200-220/100 г` at 1.0 kg (not the 0.1 the calibre grading
-implies, a 10× error that rejected the week's best find as `over_par`) and supplies a quantity
+implies, a 10× error that rejected the week's best find as `over_reference`) and supplies a quantity
 for the 165 live shelf rows whose names carry none at all.
 
 But it is a net **mass or volume**, never a count. Measured on the committed fixture:
@@ -340,7 +390,7 @@ the whole watchlist weekly, and `llm_discover`'s cap carries most of the budget.
 ## Calibration
 
 Target: **2–6 Strong Buys and 8–20 Fairs per week.** Weeks 1–4 are calibration, not production —
-the pars are the highest-value and most tedious input and only the user can really supply them,
+the catalog's scope is the highest-value and most tedious input and only the user can supply it,
 and `promo_floor` needs ~6 weeks to bite.
 
 **Read the `failed_gates` histogram in `state/last_run.json` before touching any threshold:**
@@ -349,7 +399,9 @@ and `promo_floor` needs ~6 weeks to bite.
 - `evidence` dominates → corroboration is under-firing; **raise `MAX_CORROBORATE_PER_RUN`, do not
   lower the evidence bar**
 - `abs_savings` dominates → the watchlist is full of low-ticket items; prune the catalog
-- `near_floor` dominates → pars are set above what the market routinely does; lower the pars
+- `near_floor` dominates → the market routinely beats the observed reference
+- `low_confidence_reference` dominates → too many skus mix product grades; split them. The
+  email's Catalog maintenance block names exactly which ones
 - `fit` dominates → the watchlist holds items the household does not actually want
 
 ## Development

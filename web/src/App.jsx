@@ -334,16 +334,31 @@ function ScoreRing({ score, slug, size = 56 }) {
   );
 }
 
-// Consumable bulk/par line: "€9.80/kg vs €12.00 par (18% under) · buy 5 kg = €49.00, saves €11.00"
+// Which observed reference produced this verdict. A discount is meaningless without the
+// number it was measured against, and "30% off" against a statutory shelf price is not
+// the same claim as "30% off" against an LLM's estimate — so the card always says which.
+// Keep these strings in step with find_deals.REFERENCE_LABEL.
+const REFERENCE_LABEL = {
+  own_shelf: "its own Lidl shelf price",
+  category_p25: "the Lidl shelf p25",
+  llm_reference: "an estimated reference",
+};
+
+// Consumable bulk line:
+// "€9.80/kg vs €12.00 the Lidl shelf p25 (18% under) · buy 5 kg = €49.00, saves €11.00"
 function consumableLine(e) {
   const up = fmt2(e.unit_price_eur);
   if (!up) return null;
   const suffix = unitSuffix(e.unit);
   let s = `€${up}${suffix}`;
-  if (e.par_eur != null) {
-    const par = fmt2(e.par_eur);
+  if (e.reference_eur != null) {
+    const ref = fmt2(e.reference_eur);
     const pct = fmtPct(e.discount);
-    s += ` vs €${par} par${pct ? ` (${pct} under)` : ""}`;
+    const label = REFERENCE_LABEL[e.reference_level] || "reference";
+    s += ` vs €${ref} ${label}${pct ? ` (${pct} under)` : ""}`;
+  }
+  if (e.target_eur != null && e.unit_price_eur != null && e.unit_price_eur <= e.target_eur) {
+    s += ` · beats your €${fmt2(e.target_eur)}${suffix} target`;
   }
   // bulk_total_eur, not price_eur: price_eur is the PACK price, and the pipeline computes
   // the stock-up total (unit price x bulk qty) so no arithmetic happens in here.
@@ -478,7 +493,17 @@ function Drawer({ entry: e, onClose }) {
 
         {e.the_math && <div className="d-note"><b>The math:</b> {e.the_math}</div>}
 
-        {isConsumable && e.trigger_eur == null && e.reference_price_eur == null && !e.par_eur && null}
+        {/* A low-confidence reference caps the verdict at Fair. Say so, rather than
+            letting a Fair card look like a merely-unexciting deal — the cap is a
+            statement about OUR data, not about the offer. */}
+        {isConsumable && e.reference_confidence === "low" && (
+          <div className="d-note">
+            Capped at Fair —{" "}
+            {e.reference_level === "llm_reference"
+              ? "no Lidl shelf price observed for this item yet, so the reference is an estimate."
+              : "this sku mixes product grades, so its shelf p25 is not like-for-like."}
+          </div>
+        )}
 
         {!isConsumable && e.trigger_eur != null && (
           <div className="d-note">Trigger price: €{fmt2(e.trigger_eur)}</div>

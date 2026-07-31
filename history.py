@@ -229,6 +229,39 @@ def stats_for(hist, sku):
     return (hist.get("skus", {}).get(sku) or {}).get("stats", {}) or {}
 
 
+def baseline_stats(hist, sku):
+    """-> {"n", "p25", "p10", "p90", "spread"} over the WINDOWED `regular` series.
+
+    This is the L2 `category_p25` reference: what Bulgaria's cheapest grocer actually
+    charges for this product, rolling. It replaced 44 hardcoded €/kg guesses.
+
+    COMPUTED ON READ, never stored alongside the other stats. The window is relative to
+    TODAY, so a value written last month means something different this month — a
+    stored baseline goes stale silently, and silence is the failure mode this whole
+    design is built to avoid.
+
+    p25 rather than mean or median: "the cheapest ordinary version of this product",
+    which is both what the household buys and robust to the long gourmet tail (a single
+    €47/kg boutique pasta wrecks a mean). `spread` = p90/p10 is the grade-mix detector —
+    above C.BASELINE_MAX_SPREAD the p25 is not like-for-like, so the verdict caps at
+    Fair and the sku is surfaced for splitting. C.percentile is reused rather than
+    reimplemented; two implementations of "p25" would silently disagree."""
+    cutoff = (dt.date.today() - dt.timedelta(days=C.BASELINE_WINDOW_DAYS)).isoformat()
+    entry = hist.get("skus", {}).get(sku) or {}
+    vals = [o["unit_price_eur"] for o in entry.get("regular", [])
+            if isinstance(o.get("unit_price_eur"), (int, float)) and o.get("d", "") >= cutoff]
+    if not vals:
+        return {"n": 0, "p25": None, "p10": None, "p90": None, "spread": None}
+    p10, p90 = C.percentile(vals, 0.10), C.percentile(vals, 0.90)
+    return {
+        "n": len(vals),
+        "p25": C.percentile(vals, C.BASELINE_PERCENTILE),
+        "p10": p10,
+        "p90": p90,
+        "spread": round(p90 / p10, 3) if p10 else None,
+    }
+
+
 # ── prompt summary ───────────────────────────────────────────────────────────
 
 def summarize_for_prompt(hist, skus=None):
@@ -340,7 +373,9 @@ def record_outcome(led, cand):
         "name": cand.get("name"),
         "price_eur": cand.get("price_eur"),
         "unit_price_eur": cand.get("unit_price_eur"),
-        "par_eur": cand.get("par_eur"),
+        "reference_eur": cand.get("reference_eur"),
+        "reference_level": cand.get("reference_level"),
+        "reference_confidence": cand.get("reference_confidence"),
         "reference_price_eur": cand.get("reference_price_eur"),
         "discount": cand.get("discount"),
         "saving_eur": cand.get("saving_eur"),

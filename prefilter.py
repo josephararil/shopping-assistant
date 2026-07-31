@@ -12,7 +12,7 @@ old total silently went stale.
 Pure, offline, stdlib only. See the scratchpad CONTRACT.md and config.py's module
 docstring (lines 12-44) for the offer/candidate shape this binds to.
 
-ONE public function: prefilter(offers, today, par_stats=None) -> (candidates, rejects, stats)
+ONE public function: prefilter(offers, today, baselines=None) -> (candidates, rejects, stats)
 """
 
 import config as C
@@ -20,7 +20,7 @@ import catalog
 import match
 
 # Eight reject reasons, first rule wins:
-#   expired, no_price, no_sku_match, over_par, shallow_claim, tiny_ticket, dup, over_cap
+#   expired, no_price, no_sku_match, over_reference, shallow_claim, tiny_ticket, dup, over_cap
 
 
 def _discovery_ok(offer):
@@ -37,18 +37,21 @@ def _discovery_ok(offer):
     )
 
 
-def _par_for(sku, par_stats):
-    """The par to prefilter against: effective_par when history stats are supplied,
-    else the raw catalog par. prefilter runs before history is consulted in the
-    normal pipeline, so par_stats defaults to None."""
-    cfg = catalog.CATALOG.get(sku) or {}
-    if par_stats is not None:
-        par, _drift = C.effective_par(cfg, par_stats.get(sku))
-        return par
-    return cfg.get("par_eur")
+def _reference_for(offer, baselines):
+    """The observed reference to prefilter against, or None.
+
+    None is a legitimate and common answer — a sku with no shelf history yet has nothing
+    to compare against, and Stage 4 has not run at this point so there is no LLM
+    reference either. Callers must treat that as "no opinion" and NEVER as a rejection:
+    SOURCE_CAPS is the cost bound here, not this rule, and rejecting for want of a
+    reference would silently discard every not-yet-observed sku forever."""
+    if baselines is None:
+        return None
+    reference, _level, _conf = C.reference_for(offer, baselines.get(offer.get("sku")))
+    return reference
 
 
-def _reject_reason(offer, today, par_stats):
+def _reject_reason(offer, today, baselines):
     """Per-offer reject rules, first rule wins. Mutates `offer` in place with the
     sku/sku_class/match_conf/on_list fields the discovery path or a catalog match
     establishes, so downstream ordering can read them. Returns the reason string,
@@ -75,10 +78,12 @@ def _reject_reason(offer, today, par_stats):
 
     sku_class = offer.get("sku_class")
     if sku_class == "consumable":
-        par = _par_for(sku, par_stats)
+        reference = _reference_for(offer, baselines)
         unit_price = offer.get("unit_price_eur")
-        if par and unit_price is not None and unit_price > par * C.PREFILTER_PAR_SLACK:
-            return "over_par"
+        offer["reference_eur"] = reference
+        if (reference and unit_price is not None
+                and unit_price > reference * C.PREFILTER_REFERENCE_SLACK):
+            return "over_reference"
     elif sku_class == "durable":
         trigger_eur = (catalog.CATALOG.get(sku) or {}).get("trigger_eur")
         trigger_hit = trigger_eur is not None and price <= trigger_eur
@@ -92,15 +97,15 @@ def _reject_reason(offer, today, par_stats):
     return None
 
 
-def _attractiveness(offer, par_stats):
+def _attractiveness(offer, baselines):
     """Cap-fill ordering key, descending. mydealz heat earns a place here only —
     never in a field the verdict stage could read as evidence."""
     if offer.get("sku_class") == "consumable":
-        par = _par_for(offer.get("sku"), par_stats)
+        reference = _reference_for(offer, baselines)
         unit_price = offer.get("unit_price_eur")
-        if not par or unit_price is None:
+        if not reference or unit_price is None:
             return float("-inf")
-        return 1 - unit_price / par
+        return 1 - unit_price / reference
 
     sku = offer.get("sku")
     trigger_eur = (catalog.CATALOG.get(sku) or {}).get("trigger_eur")
@@ -122,12 +127,13 @@ def _dedup_metric(offer):
     return v if v is not None else float("inf")
 
 
-def prefilter(offers, today, par_stats=None):
+def prefilter(offers, today, baselines=None):
     """Cut the raw offer set to <= sum(C.SOURCE_CAPS) before any LLM sees anything.
 
     `offers` are offer dicts (already annotated by match.annotate() where a catalog
-    sku was found). `today` is an ISO "YYYY-MM-DD" string. `par_stats` is an optional
-    {sku: price_history_stats} map for C.effective_par; omit to use the raw catalog par.
+    sku was found). `today` is an ISO "YYYY-MM-DD" string. `baselines` is an optional
+    {sku: history.baseline_stats(...)} map; omit it and no consumable is rejected on
+    price, which is the correct behaviour when no shelf history exists.
 
     Returns (candidates, rejects, stats):
       candidates          new list of offer dicts that survived, unmarked otherwise
@@ -149,7 +155,7 @@ def prefilter(offers, today, par_stats=None):
     survivors = []
     for offer in offers:
         o = dict(offer)
-        reason = _reject_reason(o, today, par_stats)
+        reason = _reject_reason(o, today, baselines)
         if reason:
             _reject(o, reason)
         else:
@@ -185,7 +191,7 @@ def prefilter(offers, today, par_stats=None):
             cap = C.DEFAULT_SOURCE_CAP
             print(f"  [prefilter WARNING] source {source!r} has no SOURCE_CAPS entry — "
                   f"falling back to DEFAULT_SOURCE_CAP={cap}. Add it to config.SOURCE_CAPS.")
-        ordered = sorted(group, key=lambda o: _attractiveness(o, par_stats), reverse=True)
+        ordered = sorted(group, key=lambda o: _attractiveness(o, baselines), reverse=True)
         for o in ordered[:cap]:
             candidates.append(o)
         for o in ordered[cap:]:
