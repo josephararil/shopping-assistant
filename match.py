@@ -150,7 +150,18 @@ def _fold_accents(text):
 # letters count as \w, but sorting keeps the intent explicit.
 _UNIT_ALT = "|".join(re.escape(k) for k in
                       sorted(catalog.UNIT_ALIASES, key=len, reverse=True))
-_QTY_RE = re.compile(r'\b(?:(\d+)\s*[xх]\s*)?(\d+(?:[.,]\d+)?)\s*(' + _UNIT_ALT + r')\b')
+# The `(?<![\d][-/])` lookbehind is a CALIBRE GUARD. Bulgarian grocery names carry
+# grading notation — "Боб насипен 200-220/100 г" means 200-220 beans per 100 g, a
+# quality grade on a loose-weight product sold by the kilo. Without the guard that reads
+# as a 100 g pack, so a €1.69/kg bag of beans becomes €16.90/kg: a 10x overstatement that
+# gets the best find of the week rejected as over-par before any LLM sees it. Rejecting a
+# number preceded by digit-then-hyphen-or-slash kills the grading form and nothing else —
+# "2x500 g" is preceded by "x", "3,5% 1 л" by a space. Lidl rows now carry an authoritative
+# net_qty (see annotate), but ccc / mydealz / llm_discover names never will, so the guard
+# stays load-bearing for them.
+_QTY_RE = re.compile(
+    r'\b(?:(\d+)\s*[xх]\s*)?(?<![\d][-/])(\d+(?:[.,]\d+)?)\s*(' + _UNIT_ALT + r')\b'
+)
 
 # A money figure may carry BOTH a thousands separator and a decimal separator, in either
 # convention: German/Bulgarian "1.393,28" or English "1,393.28", with a plain or
@@ -311,9 +322,42 @@ def match_sku(offer):
     return None, None, None
 
 
+def _qty_from_net(net_qty, expected_unit):
+    """-> (qty, unit) from a source-declared net quantity, or (None, None).
+
+    A source-declared net quantity beats a name parse: it is the manufacturer's
+    statutory declaration rather than a guess at what a product title means. It is
+    already in base units, so it is used AS IS — no divisor, no conversion. Everything
+    that needs one still goes through catalog.UNIT_TO_BASE.
+
+    IT IS TRUSTED FOR kg AND L ONLY. Lidl's `Нетно количество` is a net MASS/VOLUME,
+    so on a per-piece sku it reads the weight of the pack, not its count — measured on
+    the committed fixture, "Тоалетна хартия 8бр" declares 0.766 and "Colgate Четка за
+    зъби 3бр" declares 0.042. Using those as piece counts turns €4.00 for eight rolls
+    into "€5.22 per roll", the same 10x class of error the calibre guard exists to
+    remove. Per-piece skus keep the name-parsing path, which reads "8бр" correctly.
+
+    Known, accepted imprecision on L: edible oils declare MASS even when sold by
+    volume, so a 1 L bottle of sunflower oil reads 0.917 and its €/L comes out ~9%
+    HIGH. That is the conservative direction — it understates a discount rather than
+    manufacturing one — and it is the source's own labelling, not our arithmetic.
+    Water, milk, shampoo and toothpaste all declare volume and are exact.
+    """
+    if not isinstance(net_qty, (int, float)) or isinstance(net_qty, bool):
+        return None, None
+    if net_qty <= 0 or expected_unit not in ("kg", "L"):
+        return None, None
+    return float(net_qty), expected_unit
+
+
 def annotate(offer):
     """Mutate offer IN PLACE adding sku, sku_class, match_conf, qty, unit,
-    unit_price_eur, pending_qty. Return the offer."""
+    unit_price_eur, pending_qty. Return the offer.
+
+    Quantity comes from a source-declared `net_qty` where one is available and
+    trustworthy for the sku's unit (see _qty_from_net), and from parsing the product
+    name otherwise. `pending_qty` stays False for a net_qty row, so the audit is never
+    invited to invent a divisor for a quantity the source already declared."""
     sku, sku_class, match_conf = match_sku(offer)
     offer["sku"] = sku
     offer["sku_class"] = sku_class
@@ -326,12 +370,15 @@ def annotate(offer):
         offer["pending_qty"] = False
         return offer
 
-    qty, unit = parse_qty(offer.get("name") or "")
     expected_unit = unit_of(sku)
-    if unit is not None and expected_unit is not None and unit != expected_unit:
-        # A litre reading on a per-kilo sku is worse than no reading — treat as a
-        # failed parse rather than silently mis-priced.
-        qty, unit = None, None
+    qty, unit = _qty_from_net(offer.get("net_qty"), expected_unit)
+
+    if qty is None:
+        qty, unit = parse_qty(offer.get("name") or "")
+        if unit is not None and expected_unit is not None and unit != expected_unit:
+            # A litre reading on a per-kilo sku is worse than no reading — treat as a
+            # failed parse rather than silently mis-priced.
+            qty, unit = None, None
 
     offer["qty"] = qty
     offer["unit"] = unit

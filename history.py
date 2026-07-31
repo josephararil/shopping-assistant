@@ -3,7 +3,8 @@
 state/price_history.json structure (CONTRACT.md section 5):
   skus: {"<sku>": {unit, class,
                     promo:   [{d, retailer, source, price_eur, qty, unit_price_eur, name}],
-                    regular: [{d, source, unit_price_eur, note}],
+                    regular: [{d, source, unit_price_eur, note,
+                               retailer, product_code, name}],
                     stats:   {promo: {n, min, p10, median, last},
                               regular: {n, median, span_days}}}}
 
@@ -140,11 +141,23 @@ def record_promo(hist, cand):
     return True
 
 
-def record_regular(hist, sku, unit_price_eur, source, note=""):
-    """Append a genuine non-promo (Stage-5 comparator) price observation.
+def record_regular(hist, sku, unit_price_eur, source, note="",
+                   retailer=None, product_code=None, name=None):
+    """Record a genuine non-promo (statutory export / Stage-5 comparator) observation.
 
     Accepts ONLY the sources in C.REGULAR_ALLOWED_SOURCES, and refuses everything else
     (returns False, prints a warning).
+
+    UPSERTS on (d, product_code) rather than appending blindly. A `regular` observation
+    used to carry no identity at all, which cost twice over: two runs on one day
+    double-recorded every shelf price (measured 2026-07-31 — 50 observations, an exact
+    doubling of 25), skewing any percentile and inflating `n` against REGULAR_MIN_N;
+    and €1.53 and €3.49 rice could not be told apart from the same product observed
+    twice. The key is (d, product_code) and NOT `d` alone, because one sku legitimately
+    holds several distinct products on one day — food.rice really did have three.
+
+    A row with no `product_code` (the corroborate path has none) has no identity to
+    dedupe on and is always appended.
 
     This is an ALLOWLIST, deliberately, and it must stay one. It began life as a denylist
     of the single string "broshura", which is exactly backwards: a denylist grants every
@@ -158,29 +171,53 @@ def record_regular(hist, sku, unit_price_eur, source, note=""):
         return False
 
     entry = _sku_entry(hist, sku)
-    entry["regular"].append({
-        "d": X.today_iso(),
+    today = X.today_iso()
+    obs = {
+        "d": today,
         "source": source,
         "unit_price_eur": unit_price_eur,
         "note": note,
-    })
+        "retailer": retailer,
+        "product_code": product_code,
+        "name": name,
+    }
+
+    replaced = False
+    if product_code:
+        for i, existing in enumerate(entry["regular"]):
+            if existing.get("d") == today and existing.get("product_code") == product_code:
+                entry["regular"][i] = obs  # in place, so list order is stable
+                replaced = True
+                break
+    if not replaced:
+        entry["regular"].append(obs)
+
     entry["stats"]["regular"] = _regular_stats(entry["regular"])
     return True
 
 
+_SERIES_CAP = {"promo": "MAX_OBS_PER_SKU", "regular": "REGULAR_MAX_OBS"}
+
+
 def prune(hist):
-    """Keep the newest C.MAX_OBS_PER_SKU observations per series, drop anything older
-    than C.HISTORY_MAX_DAYS (C.DISC_SKU_MAX_DAYS for provisional `disc.*` skus, so
-    name-drift junk cannot accumulate a phantom history)."""
+    """Keep the newest per-series cap of observations, drop anything older than
+    C.HISTORY_MAX_DAYS (C.DISC_SKU_MAX_DAYS for provisional `disc.*` skus, so
+    name-drift junk cannot accumulate a phantom history).
+
+    The cap is PER SERIES, not one number for both — see C.REGULAR_MAX_OBS. `regular`
+    now takes one row per distinct Lidl product code per run, dozens per week on the
+    heavy skus, so the promo cap of 40 would wipe a sku's entire shelf history every
+    run and leave any rolling window blind while still looking populated."""
     today = dt.date.today()
     for sku, entry in hist.get("skus", {}).items():
         max_days = C.DISC_SKU_MAX_DAYS if sku.startswith("disc.") else C.HISTORY_MAX_DAYS
         cutoff = (today - dt.timedelta(days=max_days)).isoformat()
         for series in ("promo", "regular"):
+            cap = getattr(C, _SERIES_CAP[series])
             obs = [o for o in entry.get(series, []) if o.get("d", "") >= cutoff]
             obs.sort(key=lambda o: o.get("d", ""))
-            if len(obs) > C.MAX_OBS_PER_SKU:
-                obs = obs[-C.MAX_OBS_PER_SKU:]  # newest N, not oldest
+            if len(obs) > cap:
+                obs = obs[-cap:]  # newest N, not oldest
             entry[series] = obs
         entry["stats"]["promo"] = _promo_stats(entry["promo"])
         entry["stats"]["regular"] = _regular_stats(entry["regular"])

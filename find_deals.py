@@ -73,16 +73,28 @@ def _match_by_lead_id(items, lead_id):
 def _record_lidl_regulars(hist, regular_rows):
     """For every Lidl regular_row that matches a catalog sku, record its unit price
     into the `regular` series. This fails SILENTLY if forgotten — the evidence leg
-    just stays absent — which is exactly why it is asserted in test_stub.py."""
+    just stays absent — which is exactly why it is asserted in test_stub.py.
+
+    `net_qty` is threaded through so annotate can use the statutory declaration rather
+    than parsing the product title, and `product_code` so the observation carries an
+    identity — without it two runs on one day double-record every shelf price and two
+    genuinely different rices are indistinguishable from one rice seen twice."""
     n = 0
     for row in regular_rows or []:
-        synth = {"name": row.get("name"), "price_eur": row.get("price_eur")}
+        synth = {
+            "name": row.get("name"),
+            "price_eur": row.get("price_eur"),
+            "net_qty": row.get("net_qty"),
+        }
         match.annotate(synth)
         sku = synth.get("sku")
         unit_price = synth.get("unit_price_eur")
         if not sku or sku not in catalog.CATALOG or unit_price is None:
             continue
-        if history.record_regular(hist, sku, unit_price, source="lidl_regular"):
+        if history.record_regular(
+            hist, sku, unit_price, source="lidl_regular",
+            retailer="Lidl", product_code=row.get("product_code"), name=row.get("name"),
+        ):
             n += 1
     return n
 

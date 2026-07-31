@@ -30,6 +30,83 @@ chk("parse_qty '4 бр'", match.parse_qty("4 бр") == (4.0, "pc"), match.parse_
 chk("parse_qty '6 Stück'", match.parse_qty("6 Stück") == (6.0, "pc"), match.parse_qty("6 Stück"))
 chk("parse_qty nothing parses", match.parse_qty("Sony WH-1000XM5 слушалки") == (None, None))
 
+# ── parse_qty: the CALIBRE GUARD ─────────────────────────────────────────────
+# "Боб насипен 200-220/100 г" is a Bulgarian grading notation — 200-220 beans per
+# 100 g — on a product sold loose by the kilo. Read as a 100 g pack it turned a
+# €1.69/kg bag of beans into €16.90/kg, which the prefilter then rejected as over_par:
+# a 10x parse error discarding the best find of the week before any LLM saw it. The
+# guard rejects a number preceded by digit-then-hyphen-or-slash and nothing else.
+chk("calibre guard: '200-220/100 г' is not a 100 g pack",
+    match.parse_qty("Боб насипен 200-220/100 г") == (None, None),
+    match.parse_qty("Боб насипен 200-220/100 г"))
+chk("calibre guard: '30/40г' grading is rejected too",
+    match.parse_qty("Билков чай SK1, 30/40г") == (None, None),
+    match.parse_qty("Билков чай SK1, 30/40г"))
+# ...and it must not cost any legitimate parse. Each of these has a digit somewhere
+# before the quantity; none is preceded by digit-hyphen or digit-slash.
+chk("calibre guard does not break a multiplier", match.parse_qty("2x500 g") == (1.0, "kg"),
+    match.parse_qty("2x500 g"))
+chk("calibre guard does not break a percentage prefix",
+    match.parse_qty("Прясно мляко 3,5% 1 л") == (1.0, "L"),
+    match.parse_qty("Прясно мляко 3,5% 1 л"))
+chk("calibre guard does not break a model number",
+    match.parse_qty("Шампоан ES 400 ml SK 2") == (0.4, "L"),
+    match.parse_qty("Шампоан ES 400 ml SK 2"))
+
+# ── annotate — a source-declared net_qty overrides the name parse ────────────
+# Lidl's statutory export declares `Нетно количество` per row. It is the manufacturer's
+# own figure, so it beats any guess at what a product title means — and it settles both
+# of the parse failures above with authority rather than with a regex.
+beans = {"name": "Боб насипен 200-220/100 г", "price_eur": 2.04, "net_qty": 1.0}
+match.annotate(beans)
+chk("net_qty overrides a name parse: beans are €2.04/kg, not €20.40/kg",
+    (beans["qty"], beans["unit"], beans["unit_price_eur"]) == (1.0, "kg", 2.04), beans)
+chk("a net_qty row is never pending_qty — the audit must not invent a divisor",
+    beans["pending_qty"] is False)
+
+drained = {"name": "Боб кидни (ОНТ 290g)", "price_eur": 1.26, "net_qty": 0.42}
+match.annotate(drained)
+chk("net_qty wins over a drained-weight figure in the name: 0.42, not 0.29",
+    drained["qty"] == 0.42, drained)
+
+kashkaval = {"name": "Milki Dream Кашкавал", "price_eur": 7.75, "net_qty": 0.40}
+match.annotate(kashkaval)
+chk("net_qty supplies a quantity no name parse could find",
+    (kashkaval["qty"], kashkaval["unit_price_eur"]) == (0.4, 19.375), kashkaval)
+
+# ── annotate — net_qty is NEVER used for a per-piece sku ─────────────────────
+# `Нетно количество` is a net MASS/VOLUME, never a count. Measured on the committed
+# fixture: "Тоалетна хартия 8бр" declares 0.766 (kilograms of paper) and "Colgate Четка
+# за зъби 3бр" declares 0.042. Using those as piece counts turns €3.06 for eight rolls
+# into "€4.00 per roll" — the same 10x class of error the calibre guard removes, in the
+# opposite direction. Per-piece skus keep the name-parsing path, which reads "8бр".
+paper = {"name": "Тоалетна хартия 8бр", "price_eur": 3.06, "net_qty": 0.766}
+match.annotate(paper)
+chk("net_qty ignored on a pc sku: 8 rolls at €0.3825, not 0.766 'pieces'",
+    (paper["qty"], paper["unit"], paper["unit_price_eur"]) == (8.0, "pc", 0.3825), paper)
+
+eggs = {"name": "Яйца размер M 10 бр", "price_eur": 3.01, "net_qty": 0.63}
+match.annotate(eggs)
+chk("net_qty ignored on eggs: 10 eggs at €0.301, not 0.63 'pieces' of egg",
+    (eggs["qty"], eggs["unit"], eggs["unit_price_eur"]) == (10.0, "pc", 0.301), eggs)
+
+wipes = {"name": "Универсални мокри кърпички XXL", "price_eur": 2.55, "net_qty": 1.64}
+match.annotate(wipes)
+chk("a pc sku with no count in its name stays pending, rather than using net mass",
+    wipes["qty"] is None and wipes["pending_qty"] is True, wipes)
+
+# A durable never gets a quantity at all, net_qty present or not.
+durable_net = {"name": "Sony WH-1000XM5 слушалки", "price_eur": 249.0, "net_qty": 0.25}
+match.annotate(durable_net)
+chk("net_qty is ignored for a durable",
+    durable_net["qty"] is None and durable_net["unit_price_eur"] is None, durable_net)
+
+# Junk values must fall through to the name parse, not divide by ~zero.
+for bad in (0, -1.0, "1.0", None, True):
+    junk = {"name": "Сьомга филе, прясна, 500 г", "price_eur": 6.0, "net_qty": bad}
+    match.annotate(junk)
+    chk(f"net_qty={bad!r} falls back to the name parse", junk["qty"] == 0.5, junk)
+
 # ── parse_eur ────────────────────────────────────────────────────────────────
 chk("parse_eur '104,42€'", match.parse_eur("104,42€") == 104.42)
 chk("parse_eur '6,84 лв.' is None (no BGN)", match.parse_eur("6,84 лв.") is None)

@@ -68,6 +68,67 @@ def run():
         chk(f"record_regular ACCEPTS source={good_source!r}",
             okg is not False and len(hist2b["skus"][SKU]["regular"]) == 1)
 
+    # ── record_regular upserts on (d, product_code) ──
+    # Two runs on one day used to double-record every Lidl shelf price: measured
+    # 2026-07-31, state/price_history.json held 50 `regular` observations that were an
+    # exact doubling of 25. That skews every percentile and inflates `n` against
+    # REGULAR_MIN_N, so the store looks twice as well-evidenced as it is.
+    histu = history.load()
+    for _ in range(2):
+        history.record_regular(histu, SKU, 12.5, source="lidl_regular",
+                               retailer="Lidl", product_code="0001229", name="Сьомга филе")
+    obs_u = histu["skus"][SKU]["regular"]
+    chk("two record_regular calls for one product on one day yield ONE observation",
+        len(obs_u) == 1, f"got {len(obs_u)}")
+    chk("the surviving observation carries its identity",
+        obs_u[0].get("product_code") == "0001229" and obs_u[0].get("retailer") == "Lidl"
+        and obs_u[0].get("name") == "Сьомга филе", obs_u[0])
+    chk("stats reflect the deduped series", history.stats_for(histu, SKU)["regular"]["n"] == 1)
+
+    # A re-run with a CHANGED price must overwrite rather than be dropped — the newest
+    # read of the same product on the same day is the one to keep.
+    history.record_regular(histu, SKU, 11.0, source="lidl_regular",
+                           retailer="Lidl", product_code="0001229", name="Сьомга филе")
+    chk("an upsert replaces the value, it does not append or ignore",
+        len(histu["skus"][SKU]["regular"]) == 1
+        and histu["skus"][SKU]["regular"][0]["unit_price_eur"] == 11.0)
+
+    # ...but DISTINCT products on the same day are distinct observations. `d` alone is
+    # the wrong key: food.rice genuinely held three different rices on 2026-07-31, and
+    # collapsing them would replace a real price spread with a single arbitrary row.
+    histd = history.load()
+    for code, price in (("A1", 3.49), ("B2", 1.53), ("C3", 2.99)):
+        history.record_regular(histd, "food.rice", price, source="lidl_regular",
+                               retailer="Lidl", product_code=code, name=f"rice {code}")
+    chk("three distinct product codes on one day stay three observations",
+        len(histd["skus"]["food.rice"]["regular"]) == 3)
+
+    # A row with no product_code has no identity to dedupe on (the Stage-5 corroborate
+    # path has none) and must still be recorded, never silently collapsed.
+    histn = history.load()
+    for _ in range(3):
+        history.record_regular(histn, SKU, 14.0, source="corroborate")
+    chk("observations with no product_code are always appended",
+        len(histn["skus"][SKU]["regular"]) == 3)
+
+    # ── the two series are capped SEPARATELY ──
+    # `regular` takes one row per distinct Lidl product code per run — dozens a week on
+    # the heavy skus — so the promo cap of 40 would wipe a sku's whole shelf history
+    # every run and leave any rolling window blind while still looking populated.
+    chk("REGULAR_MAX_OBS is much larger than the promo cap",
+        C.REGULAR_MAX_OBS > C.MAX_OBS_PER_SKU * 10,
+        f"promo={C.MAX_OBS_PER_SKU} regular={C.REGULAR_MAX_OBS}")
+
+    histc = history.load()
+    n_reg = C.MAX_OBS_PER_SKU + 25   # over the PROMO cap, well under the regular one
+    for i in range(n_reg):
+        history.record_regular(histc, SKU, float(i), source="lidl_regular",
+                               retailer="Lidl", product_code=f"code{i}", name=f"p{i}")
+    history.prune(histc)
+    chk("prune does NOT apply the promo cap to the regular series",
+        len(histc["skus"][SKU]["regular"]) == n_reg,
+        f"kept {len(histc['skus'][SKU]['regular'])} of {n_reg}")
+
     # ── record_promo refuses a quarantined candidate ──
     hist3 = history.load()
     ok3 = history.record_promo(hist3, _promo_cand(SKU, 5.0, quarantine=True))
@@ -162,6 +223,29 @@ def run():
     kept_vals = sorted(o["unit_price_eur"] for o in kept)
     expected_vals = sorted(float(i) for i in range(n_obs - C.MAX_OBS_PER_SKU, n_obs))
     chk("prune keeps the NEWEST observations, not the oldest", kept_vals == expected_vals)
+
+    # ── ...and the regular series is capped at its OWN, larger, limit ──
+    # Built by hand rather than through record_regular: the point is prune's cap, and
+    # 1200+ upserts would only be testing the upsert scan.
+    hist7b = history.load()
+    entry7b = history._sku_entry(hist7b, SKU)
+    # Dates are compressed into 121 days, ten observations apiece — which is the real
+    # arrival shape (dozens of distinct product codes per weekly run) and keeps every
+    # row inside HISTORY_MAX_DAYS so the CAP is what gets tested, not the TTL.
+    n_reg7 = C.REGULAR_MAX_OBS + 10
+    base7b = dt.date.today() - dt.timedelta(days=n_reg7 // 10)
+    entry7b["regular"] = [
+        {"d": (base7b + dt.timedelta(days=i // 10)).isoformat(), "source": "lidl_regular",
+         "unit_price_eur": float(i), "note": "", "retailer": "Lidl",
+         "product_code": f"c{i}", "name": f"p{i}"}
+        for i in range(n_reg7)
+    ]
+    history.prune(hist7b)
+    kept7b = hist7b["skus"][SKU]["regular"]
+    chk("prune caps the regular series at REGULAR_MAX_OBS",
+        len(kept7b) == C.REGULAR_MAX_OBS, len(kept7b))
+    chk("regular prune keeps the NEWEST observations",
+        min(o["unit_price_eur"] for o in kept7b) == float(n_reg7 - C.REGULAR_MAX_OBS))
 
     # ── bump_health / stale_skus ──
     h = history.load_health()

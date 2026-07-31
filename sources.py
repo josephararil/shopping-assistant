@@ -302,6 +302,32 @@ def _resolve_lidl_col(header_map, *names):
     )
 
 
+def _parse_net_qty(text):
+    """Lidl's `Нетно количество` cell ('1.00000', '0,40000') -> float, or None.
+
+    A bare unitless decimal: the manufacturer's statutory net-quantity declaration,
+    which is a MASS or VOLUME and never a piece count. The unit is implied by the
+    product, so `match.annotate` only trusts it where `match.unit_of(sku)` is kg or L
+    — see that function for why a per-piece sku must not use it.
+
+    Deliberately not `_parse_de_amount` (which treats "." as a thousands separator and
+    would read "1.00000" as 100000) and not `match.parse_eur` (which needs a currency
+    marker). Both separators are accepted as DECIMAL here because the column carries no
+    thousands grouping — a net quantity in the thousands does not occur in a grocery
+    export, so there is no ambiguity to resolve.
+    """
+    s = (text or "").strip().replace(",", ".")
+    if not s:
+        return None
+    try:
+        value = float(s)
+    except ValueError:
+        return None
+    # A zero or negative net quantity is a data error, not a quantity. Letting it
+    # through would divide a price by ~0 and manufacture an enormous unit price.
+    return value if value > 0 else None
+
+
 def parse_lidl(blob):
     """-> (promo_offers, regular_rows). Pure.
 
@@ -319,6 +345,9 @@ def parse_lidl(blob):
     de-duped across stores by product code keeping the LOWEST promo price.
     regular_rows: one per distinct product code, the LOWEST regular/shelf price
     observed — never an offer, never mixed with the promo series.
+
+    Both carry `net_qty`: the statutory net-quantity declaration, verbatim, or None
+    when the file's schema has no such column (the first file's does not).
     """
     header_map, rows = _parse_xlsx_sheet(blob)
 
@@ -331,12 +360,17 @@ def parse_lidl(blob):
     # Only the second file's schema carries a real promo validity date; the first
     # file's schema has no such column at all, so this stays None for its rows.
     col_valid_until = header_map.get("Срок на намаление до")
+    # Same story for the manufacturer's statutory net-quantity declaration: present as
+    # column F of the second schema and populated on every row, absent entirely from
+    # the first. Resolved with .get(), NEVER _resolve_lidl_col — a file that legitimately
+    # has no net quantity must degrade to the name-parsing path, not fail the source.
+    col_net_qty = header_map.get("Нетно количество")
 
     if C.LIDL_STORE_FILTER:
         rows = [r for r in rows if C.LIDL_STORE_FILTER in r.get(col_store, "")]
 
-    best_promo = {}  # product_code -> (promo_price, name, category, regular_price, valid_until)
-    best_regular = {}  # product_code -> (regular_price, name, category)
+    best_promo = {}  # code -> (promo_price, name, category, regular_price, valid_until, net_qty)
+    best_regular = {}  # product_code -> (regular_price, name, category, net_qty)
 
     for row in rows:
         code = row.get(col_code, "").strip()
@@ -353,6 +387,8 @@ def parse_lidl(blob):
             if raw_date:
                 valid_until = match.parse_valid_until(raw_date)
 
+        net_qty = _parse_net_qty(row.get(col_net_qty, "")) if col_net_qty else None
+
         # Never use the source's own "Процентното изменение между двете цени" column
         # (M in the second schema) — Python computes claimed_discount itself; a
         # source's own arithmetic is never trusted (CONTRACT: the LLM never performs
@@ -361,23 +397,26 @@ def parse_lidl(blob):
         if regular_price is not None:
             prev = best_regular.get(code)
             if prev is None or regular_price < prev[0]:
-                best_regular[code] = (regular_price, name, category)
+                best_regular[code] = (regular_price, name, category, net_qty)
 
         if promo_text:
             promo_price = match.parse_eur(promo_text + " €")
             if promo_price is not None:
                 prev = best_promo.get(code)
                 if prev is None or promo_price < prev[0]:
-                    best_promo[code] = (promo_price, name, category, regular_price, valid_until)
+                    best_promo[code] = (
+                        promo_price, name, category, regular_price, valid_until, net_qty,
+                    )
 
     promo_offers = []
-    for code, (promo_price, name, category, was_price, valid_until) in best_promo.items():
+    for code, (promo_price, name, category, was_price, valid_until, net_qty) in best_promo.items():
         # `raw` is a STRING for every source — it reaches prose contexts (the audit
         # leads block, run.md, html.escape) where a dict would raise. The product code
         # is what de-duping keys on, so it gets its own field rather than riding inside
         # `raw`: an extra key is additive, a type change is not.
         offer = _blank_offer("lidl", f"{code} — {name}")
         offer["product_code"] = code
+        offer["net_qty"] = net_qty
         offer["retailer"] = "Lidl"
         offer["name"] = name
         offer["price_eur"] = promo_price
@@ -390,8 +429,9 @@ def parse_lidl(blob):
         promo_offers.append(offer)
 
     regular_rows = [
-        {"name": name, "product_code": code, "price_eur": price, "category": category}
-        for code, (price, name, category) in best_regular.items()
+        {"name": name, "product_code": code, "price_eur": price, "category": category,
+         "net_qty": net_qty}
+        for code, (price, name, category, net_qty) in best_regular.items()
     ]
 
     return promo_offers, regular_rows
@@ -426,21 +466,31 @@ def fetch_lidl():
 
     # De-dupe across the two lists the same way as across stores: lowest promo price
     # / lowest regular price per product code wins.
-    merged_promo = {}
-    for offer in promo_offers:
-        code = offer["product_code"]
-        prev = merged_promo.get(code)
-        if prev is None or offer["price_eur"] < prev["price_eur"]:
-            merged_promo[code] = offer
-    promo_offers = list(merged_promo.values())
+    #
+    # ...but a losing row's `net_qty` is CARRIED FORWARD onto the winner. The two files
+    # list the same products at identical prices under the same product codes (measured
+    # 2026-07-31: 700/700 shared, every price equal), and only the second schema
+    # declares a net quantity. Price-only de-duping therefore keeps the first file's row
+    # and silently discards the statutory quantity for EVERY product — 0 of 700 rows
+    # carried a net_qty before this backfill. It fails invisibly: each file parses
+    # perfectly on its own, so nothing testing a single file can see it. The price rule
+    # itself is untouched; only a field the winner does not have is filled in.
+    def _merge(rows_in):
+        merged = {}
+        for row in rows_in:
+            code = row["product_code"]
+            prev = merged.get(code)
+            if prev is None:
+                merged[code] = row
+                continue
+            winner, loser = (row, prev) if row["price_eur"] < prev["price_eur"] else (prev, row)
+            if winner.get("net_qty") is None and loser.get("net_qty") is not None:
+                winner["net_qty"] = loser["net_qty"]
+            merged[code] = winner
+        return list(merged.values())
 
-    merged_regular = {}
-    for row in regular_rows:
-        code = row["product_code"]
-        prev = merged_regular.get(code)
-        if prev is None or row["price_eur"] < prev["price_eur"]:
-            merged_regular[code] = row
-    regular_rows = list(merged_regular.values())
+    promo_offers = _merge(promo_offers)
+    regular_rows = _merge(regular_rows)
 
     distinct_products = len({r["product_code"] for r in regular_rows} | {o["product_code"] for o in promo_offers})
     all_notes = notes + ([_min_expected_note(source, distinct_products)] if _min_expected_note(source, distinct_products) else [])

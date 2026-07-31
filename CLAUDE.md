@@ -66,6 +66,27 @@ must stay an allowlist. It began as a denylist of the single string `"broshura"`
 every *new* source par-moving access by default — and that had already bitten: test fixtures were
 writing `source="ccc"` into `regular`, treating an Amazon price-drop feed as non-promo evidence.
 
+### A `regular` observation carries an identity, and upserts on `(d, product_code)`
+Every observation records `retailer`, `product_code` and `name`. Without them the series was
+anonymous, and that cost twice. Two runs on one day **double-recorded every shelf price**
+(measured 2026-07-31: 50 observations that were an exact doubling of 25), skewing every
+percentile and inflating `n` against `REGULAR_MIN_N` so the store looked twice as
+well-evidenced as it was. And €1.53 and €3.49 rice could not be told apart from one rice seen
+twice.
+
+The key is `(d, product_code)` and **not `d` alone** — one sku legitimately holds several
+distinct products on one day; `food.rice` really did have three. A row with no `product_code`
+(the Stage-5 corroborate path has none) has no identity to dedupe on and is always appended.
+
+### The two series are capped SEPARATELY
+`MAX_OBS_PER_SKU` (40) is the **promo** cap and stays 40: `promo_floor`'s p10 is calibrated to
+that sample size, so widening it silently moves every existing floor. `REGULAR_MAX_OBS` (1200)
+is the **regular** cap, and it has to be an order of magnitude larger because the series takes
+one row per *distinct Lidl product code* per run — measured live, `food.coffee_beans` alone
+contributes **32 rows in a single week**. Under one shared cap of 40 the heavy skus would be
+wholly replaced every run, so no rolling window could ever see more than one week of shelf
+prices. It would look populated and be blind.
+
 ### `effective_par` clamps to the user's par and never overwrites it
 The pipeline may nudge a par by at most `PAR_DRIFT_MAX` (0.15), from the **regular series only**.
 A sustained gap surfaces as a par-review line in the email — a human decision, not an automatic
@@ -243,8 +264,10 @@ breaks.
 **The Lidl export is the only source that can populate `regular`.** Everything else here is a
 promotions feed, so `Цена` on the statutory export is the single genuine non-promo shelf price
 the pipeline ever sees. Without it the 1.0-weight `regular_median` leg and `effective_par` stay
-dead until corroboration slowly builds a history. It contributes ~26 regular observations per
-run, which brings the leg live in about three weeks rather than twelve.
+dead until corroboration slowly builds a history. Measured live on 2026-07-31 it contributes
+**187 regular observations across 25 skus per run** — up from 22 across 13 before `net_qty`,
+because 165 of those shelf rows carry no quantity anywhere in their product name — which
+brings the leg live in the first run rather than in twelve weeks.
 
 Parsing it correctly is load-bearing, and the way it breaks is silent:
 
@@ -268,6 +291,38 @@ Parsing it correctly is load-bearing, and the way it breaks is silent:
 - The retailer's own `Процентното изменение` column is **never read**; Python computes
   `claimed_discount`. It is used only as an independent test cross-check that the right two
   price columns were picked rather than merely self-consistent wrong ones.
+- **`Нетно количество` is the second schema's other exclusive column**, and it is what makes
+  €/kg deterministic instead of a guess at what a product title means. Resolve it with
+  `header_map.get`, **never `_resolve_lidl_col`** — the first file legitimately has no such
+  column, and making it required turns a whole export into a failed source.
+- **The merge across the two files must carry a losing row's `net_qty` onto the winner.**
+  Measured 2026-07-31: the files list the same 700 products under the same codes at
+  *identical* prices, so price-only de-duping keeps the first file's row and discards the
+  statutory quantity for **every single product** — 0 of 700 rows survived with one. It fails
+  invisibly, because each file parses perfectly on its own and no single-file test can see it.
+  `test_sources.py` pins it through `fetch_lidl` with both fixtures, not through `parse_lidl`.
+
+### `net_qty` is a MASS, so it is trusted for `kg` and `L` and never for `pc`
+
+`Нетно количество` is the manufacturer's statutory net-quantity declaration and beats any name
+parse — it settles `Боб насипен 200-220/100 г` at 1.0 kg (not the 0.1 the calibre grading
+implies, a 10× error that rejected the week's best find as `over_par`) and supplies a quantity
+for the 165 live shelf rows whose names carry none at all.
+
+But it is a net **mass or volume**, never a count. Measured on the committed fixture:
+`Тоалетна хартия 8бр` declares **0.766** and `Colgate Четка за зъби 3бр` declares **0.042** —
+kilograms of product. Applied to a per-piece sku that turns €3.06 for eight rolls into "€4.00
+per roll", the same 10× class of error the calibre guard exists to remove, pointing the other
+way. **Per-piece skus keep the name-parsing path**, which reads `8бр` correctly.
+
+One accepted imprecision on `L`: edible oils declare mass even when sold by volume, so a 1 L
+bottle of sunflower oil reads 0.917 and its €/L comes out ~9% **high**. That is the source's
+own labelling, not our arithmetic, and it errs conservatively — it understates a discount
+rather than manufacturing one. Water, milk, shampoo and toothpaste all declare volume and are
+exact.
+
+The **calibre guard** in `_QTY_RE` (`(?<![\d][-/])`) is still load-bearing despite all of this:
+`ccc`, `mydealz` and `llm_discover` names never carry a `net_qty`.
 
 **Why there is no broshura scraper.** The original plan specified `broshura.bg/oferti` as ~1552
 product-level offers carrying name + EUR + BGN + retailer + `Важи до`. That does not reproduce.

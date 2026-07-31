@@ -115,7 +115,10 @@ REPORTS = [
 ]
 
 REGULAR_ROWS = [
-    {"name": "Сьомга филе 1 кг", "product_code": "12345", "price_eur": 11.50, "category": "Месо и риба"},
+    # net_qty 0.5 deliberately CONTRADICTS the "1 кг" in the name: the statutory
+    # declaration must win, so the recorded shelf price is €23.00/kg and not €11.50/kg.
+    {"name": "Сьомга филе 1 кг", "product_code": "12345", "price_eur": 11.50,
+     "category": "Месо и риба", "net_qty": 0.5},
 ]
 
 
@@ -289,6 +292,22 @@ try:
     promo_sources = {p.get("source") for p in salmon.get("promo", [])}
     assert "lidl" in promo_sources, "the lidl promo row should still be in the promo series"
     print("Lidl regular row recorded distinctly from the lidl promo row [OK]")
+
+    # The regular observation carries an IDENTITY. Without it two runs on one day
+    # double-record every shelf price and two genuinely different products are
+    # indistinguishable from one product seen twice — and `net_qty` must have reached
+    # match.annotate through find_deals, which is a seam nothing else exercises.
+    reg_obs = salmon["regular"][0]
+    assert reg_obs.get("product_code") == "12345", \
+        f"regular observation lost its product_code: {reg_obs}"
+    assert reg_obs.get("retailer") == "Lidl", f"regular observation lost its retailer: {reg_obs}"
+    assert reg_obs.get("name") == "Сьомга филе 1 кг", \
+        f"regular observation lost its name: {reg_obs}"
+    assert reg_obs.get("unit_price_eur") == 23.00, (
+        "the statutory net_qty (0.5) must beat the '1 кг' in the product name — "
+        f"expected 23.00/kg, got {reg_obs.get('unit_price_eur')}"
+    )
+    print("Lidl regular observation carries identity and uses the declared net_qty [OK]")
 
     # deals_history.json: exactly the emailed set.
     n_strong = html_body.count(C.VERDICT_LABEL[C.VERDICT_STRONG])

@@ -295,7 +295,15 @@ def ref_evidence(legs):
 
 
 # ── Price history / par drift ───────────────────────────────────────────────
-MAX_OBS_PER_SKU   = 40    # newest N observations kept per sku, per series
+MAX_OBS_PER_SKU   = 40    # newest N observations kept per sku, PROMO series only
+# The two series are capped separately because they arrive at wildly different rates.
+# `promo` gets a handful of offers per sku per week and 40 is what promo_floor's p10 is
+# calibrated against — widening it silently moves every existing floor, so it stays.
+# `regular` gets one row per DISTINCT LIDL PRODUCT CODE per run: the heaviest skus
+# (food.kashkaval, food.coffee_beans) contribute 30-60 shelf rows in a single week. At
+# 40 those skus would be wholly replaced every run, so no rolling window could ever see
+# more than one week of shelf prices — the baseline would look populated and be blind.
+REGULAR_MAX_OBS   = 1200  # newest N observations kept per sku, REGULAR series only
 HISTORY_MAX_DAYS  = 540   # TTL for observations on catalog skus
 DISC_SKU_MAX_DAYS = 90    # provisional `disc.*` skus prune fast so name-drift junk
                           # does not accumulate a phantom history
