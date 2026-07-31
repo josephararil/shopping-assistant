@@ -287,7 +287,9 @@ MAX_OBS_PER_SKU   = 40    # newest N observations kept per sku, PROMO series onl
 # `promo` gets a handful of offers per sku per week and 40 is what promo_floor's p10 is
 # calibrated against — widening it silently moves every existing floor, so it stays.
 # `regular` gets one row per DISTINCT LIDL PRODUCT CODE per run: the heaviest skus
-# (food.kashkaval, food.coffee_beans) contribute 30-60 shelf rows in a single week. At
+# (food.kashkaval, and food.coffee_beans in the 44-sku catalog this was measured against
+# — its successor food.coffee_ground carries the same load) contribute 30-60 shelf rows
+# in a single week. The sizing argument for 1200 still rests on that measurement. At
 # 40 those skus would be wholly replaced every run, so no rolling window could ever see
 # more than one week of shelf prices — the baseline would look populated and be blind.
 REGULAR_MAX_OBS   = 1200  # newest N observations kept per sku, REGULAR series only
@@ -304,8 +306,9 @@ PROMO_FLOOR_MIN_N      = 4     # below this, promo_floor is None and near_floor 
 
 # ── The observed baseline: what replaced par_eur ────────────────────────────
 # Consumables used to be judged against 44 hardcoded €/kg guesses. They were wrong in
-# both directions at once — house.shampoo's €8.00 par made a €3.79/L Amazon deal a
-# Strong Buy when Lidl's own shelf shampoo is €2.89, and supp.whey_protein's €19.00 par
+# both directions at once — house.shampoo's €8.00 par (that sku has since been removed
+# from the catalog; the measurement stands) made a €3.79/L Amazon deal a Strong Buy when
+# Lidl's own shelf shampoo is €2.89, and supp.whey_protein's €19.00 par
 # made €22.50/kg a Skip when the user's real bar is €25. Any static number also decays
 # with inflation, and every one of them came from stale model training data.
 #
@@ -319,8 +322,10 @@ BASELINE_WINDOW_DAYS = 120   # the reference always reflects roughly the last fo
 BASELINE_PERCENTILE  = 0.25  # p25, not mean or median: "the cheapest ordinary version
                              # of this product at the cheapest grocer". That is what
                              # this household actually buys, it is robust to the long
-                             # gourmet tail that wrecks a mean (food.pasta reaches
-                             # €47/kg), and it is the stricter choice.
+                             # gourmet tail that wrecks a mean (measured on the 44-sku
+                             # catalog, food.pasta reached €47/kg; that sku was removed
+                             # for exactly that reason, and food.rice still spans
+                             # €1.53-€3.49), and it is the stricter choice.
 BASELINE_MAX_SPREAD  = 2.0   # p90/p10 above this means the sku mixes product grades, so
                              # its p25 is not like-for-like. Measured: 18 of 27 skus do.
                              # Those are capped at Fair (see verdict_consumable) and

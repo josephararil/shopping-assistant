@@ -575,9 +575,11 @@ def maintenance_lines(hist):
 
     This is the visible half of the L2 reference, and it is the direct successor to the
     par-review block. The reasoning is the same shape: `verdict_consumable` handles a
-    wide-spread sku SAFELY (it caps at Fair) and therefore SILENTLY. `food.pasta` mixing
-    €1.98 durum with €47.67 boutique is not a market fact, it is a catalog problem, and
-    nothing errors while it persists — the sku just quietly never reaches Strong Buy.
+    wide-spread sku SAFELY (it caps at Fair) and therefore SILENTLY. `food.rice` mixing
+    €1.53 plain white with €3.49 risotto and pearl grades is not a market fact, it is a
+    catalog problem, and nothing errors while it persists — the sku just quietly never
+    reaches Strong Buy. `food.pasta` was the worst case at €1.98 durum against €47.67
+    boutique, and was removed from the catalog for exactly that reason.
 
     Splitting a sku is a human decision, so this reports and changes nothing. Measured
     2026-07-31: 18 of 27 observed skus are over the threshold, which is a finite,
