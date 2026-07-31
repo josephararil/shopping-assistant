@@ -90,10 +90,16 @@ match.annotate(eggs)
 chk("net_qty ignored on eggs: 10 eggs at €0.301, not 0.63 'pieces' of egg",
     (eggs["qty"], eggs["unit"], eggs["unit_price_eur"]) == (10.0, "pc", 0.301), eggs)
 
-wipes = {"name": "Универсални мокри кърпички XXL", "price_eur": 2.55, "net_qty": 1.64}
-match.annotate(wipes)
+# Repointed from the deleted baby.wipes sku onto house.toilet_paper — the assertion is
+# about the `pc` PATH, so it needs a name that still resolves to a surviving pc sku.
+# An unmatched name would pass this check for the wrong reason: annotate() early-returns
+# on sku is None, so qty would be None and pending_qty False, and the net-mass rule would
+# never be reached at all.
+no_count = {"name": "Тоалетна хартия трипластова XXL", "price_eur": 2.55, "net_qty": 1.64}
+match.annotate(no_count)
 chk("a pc sku with no count in its name stays pending, rather than using net mass",
-    wipes["qty"] is None and wipes["pending_qty"] is True, wipes)
+    no_count["sku"] == "house.toilet_paper" and no_count["qty"] is None
+    and no_count["pending_qty"] is True, no_count)
 
 # An unmatched offer (no sku) never gets a quantity from net_qty, only from a name parse.
 unmatched_net = {"name": "Random unrelated product", "price_eur": 249.0, "net_qty": 0.25}
@@ -138,9 +144,16 @@ smoked = {"name": "Пушена сьомга 200 г", "price_eur": 3.00}
 chk("smoked-vs-fresh trap: no salmon match",
     match.match_sku(smoked)[0] != "food.salmon_fillet", match.match_sku(smoked))
 
-nespresso = {"name": "Nespresso капсули кафе 10 бр", "price_eur": 4.0}
-chk("Nespresso capsule trap: no coffee-beans match",
-    match.match_sku(nespresso)[0] != "food.coffee_beans", match.match_sku(nespresso))
+# Repointed from the deleted food.coffee_beans onto its successor food.coffee_ground.
+# The name carries BOTH "кафе" and "мляно" deliberately, so it satisfies an any_of group
+# and can only be stopped by the veto. The old name ("Nespresso капсули кафе 10 бр") was
+# measured to pass for two wrong reasons at once: food.coffee_beans no longer exists, AND
+# a bare "кафе" never satisfies food.coffee_ground's two-token groups anyway — so with
+# BOTH "капсул" and "nespresso" deleted from the veto list it still returned None. A
+# negative test that cannot fail guards nothing.
+nespresso = {"name": "Nespresso капсули мляно кафе 10 бр", "price_eur": 4.0}
+chk("Nespresso capsule trap: no ground-coffee match",
+    match.match_sku(nespresso)[0] != "food.coffee_ground", match.match_sku(nespresso))
 
 # ── match_sku / annotate — positive matches ─────────────────────────────────
 salmon = {"name": "Сьомга филе, прясна, 1 кг", "price_eur": 11.40}

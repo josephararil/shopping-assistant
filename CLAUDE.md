@@ -84,13 +84,18 @@ distinct products on one day; `food.rice` really did have three. A row with no `
 `MAX_OBS_PER_SKU` (40) is the **promo** cap and stays 40: `promo_floor`'s p10 is calibrated to
 that sample size, so widening it silently moves every existing floor. `REGULAR_MAX_OBS` (1200)
 is the **regular** cap, and it has to be an order of magnitude larger because the series takes
-one row per *distinct Lidl product code* per run — measured live, `food.coffee_beans` alone
-contributes **32 rows in a single week**. Under one shared cap of 40 the heavy skus would be
+one row per *distinct Lidl product code* per run — measured live against the pre-rewrite
+44-sku catalog, `food.coffee_beans` alone contributed **32 rows in a single week**. That sku is
+gone (superseded by `food.coffee_ground`, see below), but the sizing argument for `REGULAR_MAX_OBS`
+= 1200 still depends on this measurement: it is what a single heavy sku can do to the series, and
+nothing about the 30-sku catalog makes a heavy sku less possible. Under one shared cap of 40 the
+heavy skus would be
 wholly replaced every run, so no rolling window could ever see more than one week of shelf
 prices. It would look populated and be blind.
 
 ### The reference is OBSERVED, in three levels, and the level is always reported
-`par_eur` is gone. All 44 of them were guesses from stale model training data, and they were
+`par_eur` is gone. All 44 of them — against the original 44-sku catalog, before PR-B cut it to
+30 — were guesses from stale model training data, and they were
 wrong in **both** directions at once: an €8.00 shampoo par made a €3.79/L Amazon deal a Strong
 Buy when Lidl's own shelf shampoo is €2.89, while a €19.00 whey par made €22.50/kg a Skip. Any
 static number also decays with inflation. `config.reference_for()` tries three levels in order:
@@ -110,7 +115,8 @@ exists to reject.
 
 **p25, not mean or median.** It reads as "the cheapest ordinary version of this product at the
 cheapest grocer", which is what this household buys, is robust to the long gourmet tail that
-wrecks a mean (`food.pasta` reaches €47/kg), and is the stricter choice.
+wrecks a mean (`food.pasta`, since removed from the catalog for exactly this grade-mixing
+problem, reached €47/kg at the boutique end), and is the stricter choice.
 
 **`BASELINE_WINDOW_DAYS` (120) bounds the reference computation only.** `HISTORY_MAX_DAYS` (540)
 still keeps the raw observations, so the reference tracks inflation instead of averaging over a
@@ -131,10 +137,13 @@ open a spam vector.
 `find_deals.maintenance_lines` is the visible half, and is the direct successor to the deleted
 par-review block. The reasoning is the same shape: `verdict_consumable` handles a wide-spread sku
 SAFELY, and therefore **silently** — nothing errors while the sku quietly never reaches Strong Buy
-again. Measured 2026-07-31, 18 of 27 observed skus are over the threshold, and `food.pasta` mixing
-€1.98 durum with €47.67 boutique is a *catalog* problem, not a market fact. The block turns that
-into a finite, shrinking to-do list. It reads the same windowed series the reference reads, so the
-line always describes the number the verdicts actually used.
+again. Measured 2026-07-31 against the pre-rewrite 44-sku catalog, 18 of 27 observed skus were
+over the threshold, and `food.rice` mixing €1.53 plain rice with €3.49 (a real measured 2.28x
+spread, polluted at the time by a baby-purée row) is a *catalog* problem, not a market fact — the
+same class of problem that got `food.pasta` (€1.98 durum against €47.67 boutique, a far wider
+spread) removed from the catalog outright in PR-B rather than merely split. The block turns a
+wide spread into a finite, shrinking to-do list. It reads the same windowed series the reference
+reads, so the line always describes the number the verdicts actually used.
 
 ### `target_eur` is PROMOTE-ONLY, and must never be guessed
 `target_eur` (consumable, per unit) is a number the user named themselves, so no baseline
@@ -195,6 +204,20 @@ leaks the smoked-vs-fresh trap; substring-anywhere fixes that but silently vetoe
 hits. It is justified because the errors are not symmetric — **a missed veto is a false positive**,
 costing budget and trust, while a missed match is a miss that `catalog_health` surfaces after
 `CATALOG_STALE_RUNS` runs.
+
+### `shelf_life_days` is not `restock_days`
+PR-B (commit fd89c4a) added `shelf_life_days` to all 30 catalog entries. It is a property of the
+**food** — how long it keeps — while `restock_days` is a property of **this household's
+consumption** — how long a stock-up lasts them, and the number that drives the anti-spam TTL below.
+`food.chicken_breast` is the case that forces the distinction: 60 restock days against 120
+shelf-life days. Conflating the two would rank the household's cornerstone freezer item — bought
+in bulk, consumed steadily, restocked every two months — below shelf-stable rice that keeps for
+years but that nobody eats through in 60 days. They measure different things and neither
+substitutes for the other.
+
+**`shelf_life_days` is recorded but not yet read, on purpose.** Its consumers arrive in PR-C. It
+is added now, ahead of anything that uses it, specifically so that PR-C never has to read a key
+that does not exist on 30 catalog entries it didn't write.
 
 ### A Strong Buy's TTL is the item's own `restock_days`, not a global constant
 A recurring salmon promo the household already stocked up on stays quiet ~90 days; a genuinely
@@ -302,6 +325,72 @@ merchant. Losing either feed would leave `supp.whey_protein` — the one sku hol
 — with no deterministic promo source, pushing it onto the off-list discovery path that this same
 removal just cut entirely. Only the durable-only `category_hint` field is gone from both parsers;
 the feeds themselves and their parsing logic are untouched.
+
+### PR-B: the catalog went from 44 skus to 30, and each change has a measured reason
+The catalog now holds exactly the non-perishable bulk stock-up items this household actually
+buys ahead — frozen meat and fish, tinned and dried staples, hard cheese, ground coffee, oil,
+honey, toilet paper. Perishables (bananas, apples, fresh vegetables) are deliberately excluded:
+they rot before a bulk buy pays off, so tracking them would only ever manufacture noise, never a
+real arbitrage.
+
+**A change to the catalog or its thresholds may make the digest quieter, never louder.** This is
+the governing principle for the whole refocus, and every item below is an instance of it: when a
+number is uncertain, the conservative direction is always fewer alerts, not more.
+
+Three match rules were corrected in this pass, each because a specific observed row proved the
+old rule wrong, and each is the kind of rule a future session mistakes for noise and deletes:
+
+- `food.pork_meat` gained a `"пушен"/"smoked"/"gerauchert"` prefix veto. The dearest observed
+  shelf row was Пушено свинско филе at €12.27/kg — not the bulk cut this sku tracks — which alone
+  drove the sku's spread to 2.09x and Fair-capped it. Mirrors the existing salmon smoked/fresh
+  rule.
+- `food.rice` lists its Jasmine two-token groups first so they win `match_conf` "high", while the
+  bare `["ориз"]` group is retained at "medium" so a plain rice promo still surfaces rather than
+  vanishing. It also gained `пюре`/`бебешк`/`био` vetoes: the observed p25 was polluted by a
+  baby-purée row ("Био Пюре ... и ориз") that produced the 2.28x spread cited above.
+- `food.milk` is UHT-only now. Fresh milk cannot be stocked up on at all, so tracking it as a
+  bulk-arbitrage target was always going to be a category error.
+
+Twenty-one skus were deleted and seven added (`food.coffee_ground`, `food.couscous`,
+`food.lutenitsa`, `food.cottage_cheese`, `food.sausages`, `food.peas_tinned`,
+`food.chickpeas_tinned`). Two of the seven shipped with a veto validated against the 358 real
+Lidl product names in `fixtures/`, and both vetoes exist because the unvalidated rule was
+measurably wrong:
+
+- `food.sausages` deliberately vetoes `"луканк"`. An earlier draft listed `["луканка"]` in
+  `any_of` and matched 8 rows, six of which were dry-cured charcuterie at ~€15–25/kg rather than
+  the ~€4/kg kebapche this household buys. `"луканк"` is a prefix veto so it also kills the
+  inflected "Луканкова наденица". 8 hits down to 1.
+- `food.peas_tinned` vetoes `"морков"/"carrot"` for the same measured reason: without it
+  `["грах"]` matched "Грах с моркови" — peas *with* carrots, a different product. 3 hits down
+  to 2.
+
+**`food.coffee_ground` supersedes `food.coffee_beans`, and is an add+delete, not a rename.** The
+old series measured whole beans, which the user does not buy; keeping the slug would have carried
+whole-bean history and TTL onto a ground-coffee product that never earned it. The coffee price
+history restarts deliberately. This does not violate the slug-permanence rule above — that rule
+protects a single product's identity across renames; it says nothing about retiring one product
+and adding a different one that happens to occupy the same shelf.
+
+**`food.flour` stays deleted even though the user bought flour at €0.69/kg this week.** At that
+price no bulk buy clears the incoming `STOCKUP_MIN_SAVING_EUR` floor, so tracking it would only
+ever produce Fairs — noise, not signal, and precisely the outcome the governing principle above
+warns against manufacturing.
+
+`bulk_qty` corrections, each from the user's own numbers and each affecting `saving_eur` — which
+is both the Strong Buy floor and the ranking weight, so raising `bulk_qty` makes a sku *easier*
+to promote and must be justified by how the household actually buys, never guessed generously:
+
+- `supp.whey_protein`: 50 -> 20, and **held** at 20 deliberately. The user says the amount they'd
+  actually buy is effectively unbounded and they may buy more on a genuinely good deal, but a
+  bigger `bulk_qty` only ever makes whey easier to promote, never harder — so 20 is the
+  conservative starting point. If whey turns out under-alerted after the first run, raising this
+  number is the knob, not a threshold.
+- `food.frozen_vegetables`: 6 -> 22.5 kg (9 x 2.5 kg bags — this household buys 2.5 kg bags,
+  8–10 at a time, limited by freezer space).
+- `food.tomatoes_tinned`: 12 -> 4.8 kg (12 x 400 g tins — the old 12 was a tin *count*
+  masquerading as kilograms).
+- `food.chicken_breast`: unchanged at 6.0 kg.
 
 ## Data sources
 

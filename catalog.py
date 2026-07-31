@@ -1,4 +1,4 @@
-"""catalog.py — DATA ONLY, no logic. The user's watchlist, wishlist and vocabulary.
+"""catalog.py — DATA ONLY, no logic. The user's watchlist and vocabulary.
 
 Separated from config.py deliberately: this is hundreds of lines of data that the user
 owns and edits, while config.py holds knobs the pipeline owns. The travel repo's
@@ -22,6 +22,22 @@ shampoo par made a EUR 3.79/L Amazon deal a Strong Buy when Lidl's own shelf sha
 is EUR 2.89, while a EUR 19.00 whey par made EUR 22.50/kg a Skip. The reference is now
 OBSERVED and rolling, from Lidl's statutory price export: see config.reference_for.
 Weeks 1-4 are calibration: expect to prune this list after run 1.
+
+── `restock_days` AND `shelf_life_days` ARE DIFFERENT CONCEPTS ──────────────────
+Every entry carries both, and they must never be set equal "for convenience":
+
+  restock_days     how long a stock-up LASTS this household — a consumption rate.
+                   It is the anti-spam TTL: how long after alerting on this item we
+                   stay quiet, because the freezer or cupboard is already full.
+  shelf_life_days  how long the PRODUCT keeps — a property of the food, not of the
+                   household. It is what makes a stock-up worth doing at all, and it
+                   scales the stock-up ranking term.
+
+Chicken breast is the case that forces the distinction: 60 restock days (how fast
+6 kg gets eaten) against 120 shelf-life days (how long it stays good frozen).
+Conflating the two ranks the user's cornerstone freezer item below shelf-stable rice.
+A missing `shelf_life_days` grants FULL stock-up credit rather than none, so it
+inflates a rank silently — every sku must carry one, and a test asserts it.
 
 ── HOW MATCHING WORKS (and why it cannot fire on prose) ─────────────────────────
 An offer matches item X IFF some group in X["match"]["any_of"] is a SUBSET of
@@ -51,16 +67,18 @@ negatives here, because a false positive costs budget AND trust. A sku that has 
 matched in CATALOG_STALE_RUNS runs is surfaced in the email as a rule to fix.
 """
 
-# ── Consumables: recurring purchases with a target UNIT price ────────────────
+# ── Consumables: recurring bulk purchases with a target UNIT price ───────────
 # unit is exactly one of "kg" | "L" | "pc". target_eur, where present, is EUR per that
 # unit — an absolute promote-only pre-commitment, NOT a discount denominator.
 # bulk_qty is what "buy and stock up" means for this item — it drives the saving
 # figure the user actually reasons with ("buy 5 kg, saves EUR 11").
 # restock_days is how long a stock-up lasts, and IS the anti-spam TTL for this item.
+# shelf_life_days is how long the product keeps — see the docstring; NOT the same thing.
 WATCHLIST = {
     "food.salmon_fillet": {
         "class": "consumable", "label": "Salmon fillet / steak", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 90, "freezable": True,
+        "bulk_qty": 5.0, "restock_days": 90, "shelf_life_days": 90,
+        "freezable": True,
         "bulk_note": "Portion into 400 g bags, freeze; keeps 3 months.",
         "match": {
             "any_of": [["сьомга"], ["salmon"], ["losos"], ["lachs"]],
@@ -69,8 +87,11 @@ WATCHLIST = {
         },
     },
     "food.chicken_breast": {
+        # The case that forces restock_days != shelf_life_days: 6 kg is eaten in ~60
+        # days, but it keeps ~120 days frozen. Ranking must use the latter.
         "class": "consumable", "label": "Chicken breast fillet", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 60, "freezable": True,
+        "bulk_qty": 6.0, "restock_days": 60, "shelf_life_days": 120,
+        "freezable": True,
         "bulk_note": "Freeze in 500 g portions; keeps 4 months.",
         "match": {
             "any_of": [["пилешко", "филе"], ["chicken", "breast"], ["huhnerbrust"],
@@ -81,8 +102,9 @@ WATCHLIST = {
     },
     "food.olive_oil": {
         "class": "consumable", "label": "Extra virgin olive oil", "unit": "L",
-        "bulk_qty": 5.0, "restock_days": 180, "freezable": False,
-        "bulk_note": "Keeps 2 years unopened; store dark and cool.",
+        "bulk_qty": 5.0, "restock_days": 180, "shelf_life_days": 730,
+        "freezable": False,
+        "bulk_note": "5 L drum. Keeps 2 years unopened; store dark and cool.",
         "match": {
             "any_of": [["маслиново", "масло"], ["olive", "oil"], ["olivenol"],
                        ["зехтин"]],
@@ -90,26 +112,38 @@ WATCHLIST = {
                      "спрей", "spray", "шампоан", "shampoo"],
         },
     },
-    "food.coffee_beans": {
-        "class": "consumable", "label": "Coffee beans / ground coffee", "unit": "kg",
-        "bulk_qty": 3.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Whole beans keep 6 months sealed; ground goes flat in weeks.",
+    "food.coffee_ground": {
+        # Supersedes the deleted food.coffee_beans — a NEW slug, not a rename, so the
+        # coffee history restarts deliberately: the old series measured whole beans,
+        # which the user does not buy. Ground only, never beans, never capsules.
+        "class": "consumable", "label": "Ground coffee", "unit": "kg",
+        "bulk_qty": 5.0, "restock_days": 300, "shelf_life_days": 365,
+        "freezable": False,
+        "bulk_note": "20 x 250 g packs. Sealed ground coffee keeps ~12 months.",
         "match": {
-            "any_of": [["кафе", "зърна"], ["coffee", "beans"], ["kaffeebohnen"],
-                       ["кафе", "мляно"], ["coffee", "ground"]],
-            "none": ["капсул", "capsule", "dolce", "nespresso", "разтворим",
-                     "instant", "3in1", "машина", "machine", "мляко", "milk"],
+            "any_of": [["кафе", "мляно"], ["мляно", "кафе"], ["ground", "coffee"],
+                       ["lavazza"], ["filterkaffee"]],
+            "none": ["зърна", "beans", "bohnen", "капсул", "capsule", "dolce",
+                     "nespresso", "разтворим", "instant", "3in1", "машина",
+                     "machine", "мляко", "milk"],
         },
     },
     "supp.whey_protein": {
         # The named annual-promo case: restock_days ~300 so the yearly silabg promo
         # re-alerts on its own cycle instead of being suppressed by a global TTL.
-        # target_eur is one of only two numbers the user genuinely holds (interview,
+        # target_eur is the ONE number the user genuinely holds (interview,
         # 2026-07-31): they currently buy Bulk-brand from Amazon.de at ~EUR 30/kg and
-        # would buy 20 kg outright below EUR 25/kg. Promote-only, never a denominator.
+        # would buy outright below EUR 25/kg. Promote-only, never a denominator.
+        #
+        # bulk_qty 20.0 is the user's normal single purchase and is effectively
+        # unbounded — they would buy more on a genuinely good deal. It is held at 20
+        # ON PURPOSE: bulk_qty drives saving_eur, which is both the Strong Buy floor
+        # and the ranking weight, so a bigger number makes whey EASIER to promote.
+        # This is the knob to raise if whey turns out to be under-alerted.
         "class": "consumable", "label": "Whey protein powder", "unit": "kg",
         "target_eur": 25.00,
-        "bulk_qty": 50.0, "restock_days": 300, "freezable": False,
+        "bulk_qty": 20.0, "restock_days": 300, "shelf_life_days": 550,
+        "freezable": False,
         "bulk_note": "Sealed tubs keep 18-24 months. The yearly promo is the buy window.",
         "match": {
             "any_of": [["whey"], ["протеин", "whey"], ["суроватъчен"], ["wheyprotein"]],
@@ -117,42 +151,64 @@ WATCHLIST = {
                      "vegan", "веган", "casein", "казеин", "gainer", "гейнър"],
         },
     },
-    "house.laundry_gel": {
-        "class": "consumable", "label": "Laundry detergent gel", "unit": "L",
-        "bulk_qty": 10.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Indefinite shelf life; only storage space limits the buy.",
-        "match": {
-            "any_of": [["течен", "перилен"], ["liquid", "detergent"], ["waschgel"],
-                       ["гел", "пране"], ["laundry", "gel"]],
-            "none": ["омекотител", "softener", "капсул", "capsule", "podove",
-                     "прах", "powder", "съдомиял", "dishwasher", "препарат", "съдове"],
-        },
-    },
     # ── Bulk food: meat and fish ──────────────────────────────────────────
     "food.pork_meat": {
         "class": "consumable", "label": "Pork (shoulder/leg), bulk cut", "unit": "kg",
-        "bulk_qty": 8.0, "restock_days": 75, "freezable": True,
+        "bulk_qty": 8.0, "restock_days": 75, "shelf_life_days": 120,
+        "freezable": True,
         "bulk_note": "Portion and freeze in 500 g bags; keeps 4 months.",
         "match": {
+            # The dearest observed shelf row was SMOKED pork (Пушено свинско филе,
+            # EUR 12.27/kg), which is not the bulk cut being tracked and drove this
+            # sku's spread to 2.09x, Fair-capping it. `none` is a PREFIX test, so the
+            # bare stem "пушен" vetoes пушена/пушено/пушени. Mirrors the salmon rule.
             "any_of": [["свинско", "месо"], ["pork"], ["schweinefleisch"],
                        ["свинско", "филе"]],
             "none": ["котк", "cat", "куче", "dog", "храна", "консерв", "пастет",
-                     "pate", "салам", "наденица", "sausage", "бекон", "bacon"],
+                     "pate", "салам", "наденица", "sausage", "бекон", "bacon",
+                     "пушен", "smoked", "gerauchert"],
         },
     },
     "food.beef_mince": {
-        "class": "consumable", "label": "Beef mince", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 60, "freezable": True,
+        # Widened to all mince (beef / pork / mixed). The SLUG IS UNCHANGED on
+        # purpose — slugs are permanent history and TTL keys; only the label and the
+        # match rule widen. The old "свин" veto is gone.
+        "class": "consumable", "label": "Mince (beef / pork / mixed)", "unit": "kg",
+        "bulk_qty": 4.0, "restock_days": 60, "shelf_life_days": 120,
+        "freezable": True,
         "bulk_note": "Freeze in 500 g flat portions; keeps 4 months.",
         "match": {
-            "any_of": [["телешка", "кайма"], ["beef", "mince"], ["rinderhack"]],
-            "none": ["свин", "пиле", "chicken", "кюфте", "meatball", "готово",
-                     "ready", "консерв", "canned"],
+            "any_of": [["телешка", "кайма"], ["свинска", "кайма"], ["смес", "кайма"],
+                       ["кайма"], ["beef", "mince"], ["rinderhack"], ["hackfleisch"]],
+            "none": ["пиле", "chicken", "кюфте", "meatball", "готово", "ready",
+                     "консерв", "canned", "котк", "cat", "куче", "dog"],
+        },
+    },
+    "food.sausages": {
+        # Sausages / kebapche — the ~EUR 4/kg bulk grill item, NOT луканка.
+        # Validated against 358 real Lidl product names: an earlier draft listed
+        # ["луканка"] in any_of and matched 8 rows of which SIX were луканка —
+        # dry-cured charcuterie at ~EUR 15-25/kg. That is the same defect the
+        # food.pork_meat smoked veto above exists to fix: an expensive cured variant
+        # inflating a bulk sku's spread and Fair-capping it. "луканк" is a PREFIX
+        # veto so it also kills "Луканкова наденица", which would otherwise slip
+        # through on its наденица token. 8 hits -> 1.
+        "class": "consumable", "label": "Sausages / kebapche", "unit": "kg",
+        "bulk_qty": 4.0, "restock_days": 60, "shelf_life_days": 120,
+        "freezable": True,
+        "bulk_note": "Freeze in meal portions; keeps 4 months.",
+        "match": {
+            "any_of": [["кебапче"], ["кебапчета"], ["наденица"], ["наденички"],
+                       ["sausages"], ["bratwurst"]],
+            "none": ["котк", "cat", "куче", "dog", "храна", "консерв", "вегет",
+                     "vegan", "веган", "соев", "soy", "тофу", "tofu",
+                     "луканк", "шпек", "салам", "суджук", "пушен"],
         },
     },
     "food.turkey_breast": {
         "class": "consumable", "label": "Turkey breast fillet", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 60, "freezable": True,
+        "bulk_qty": 5.0, "restock_days": 60, "shelf_life_days": 120,
+        "freezable": True,
         "bulk_note": "Freeze in 500 g portions; keeps 4 months.",
         "match": {
             "any_of": [["пуешко", "филе"], ["turkey", "breast"], ["putenbrust"],
@@ -163,7 +219,8 @@ WATCHLIST = {
     },
     "food.white_fish": {
         "class": "consumable", "label": "White fish fillet (cod/hake), frozen", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 90, "freezable": True,
+        "bulk_qty": 4.0, "restock_days": 90, "shelf_life_days": 180,
+        "freezable": True,
         "bulk_note": "Already frozen; portion into meal bags on arrival.",
         "match": {
             "any_of": [["бяла", "риба"], ["white", "fish"], ["weissfisch"],
@@ -174,47 +231,38 @@ WATCHLIST = {
     },
     # ── Bulk food: staples ────────────────────────────────────────────────
     "food.rice": {
-        "class": "consumable", "label": "Rice", "unit": "kg",
-        "bulk_qty": 10.0, "restock_days": 180, "freezable": False,
+        "class": "consumable", "label": "Rice (5 kg Jasmine)", "unit": "kg",
+        "bulk_qty": 10.0, "restock_days": 180, "shelf_life_days": 540,
+        "freezable": False,
         "bulk_note": "Shelf-stable; buy a 10 kg bag and store dry.",
         "match": {
-            "any_of": [["ориз"], ["rice"], ["reis"]],
+            # The user buys 5 kg Jasmine. The specific Jasmine groups are listed
+            # FIRST so they win match_conf "high" (two tokens); the bare ["ориз"]
+            # group is retained so a plain rice promo still matches at "medium"
+            # rather than vanishing from the digest entirely.
+            # The purée vetoes are measured: observed p25 was polluted by a baby-
+            # purée row ("Био Пюре ... и ориз"), giving a 2.28x spread.
+            "any_of": [["ориз", "жасмин"], ["jasmine", "rice"], ["жасминов", "ориз"],
+                       ["ориз"], ["rice"], ["reis"]],
             "none": ["пудинг", "pudding", "десерт", "dessert", "вафли", "cakes",
-                     "суши", "sushi"],
+                     "суши", "sushi", "пюре", "puree", "бебешк", "baby", "био",
+                     "каша"],
         },
     },
-    "food.pasta": {
-        "class": "consumable", "label": "Pasta", "unit": "kg",
-        "bulk_qty": 8.0, "restock_days": 180, "freezable": False,
-        "bulk_note": "Shelf-stable for a year+; stock the whole shelf life.",
+    "food.couscous": {
+        "class": "consumable", "label": "Couscous", "unit": "kg",
+        "bulk_qty": 4.0, "restock_days": 180, "shelf_life_days": 540,
+        "freezable": False,
+        "bulk_note": "Shelf-stable for a year+; store dry and sealed.",
         "match": {
-            "any_of": [["паста"], ["pasta"], ["nudeln"], ["макарони"]],
-            "none": ["зъби", "teeth", "zahnpasta", "zahncreme", "сос", "sauce",
-                     "salsa"],
-        },
-    },
-    "food.flour": {
-        "class": "consumable", "label": "Wheat flour", "unit": "kg",
-        "bulk_qty": 10.0, "restock_days": 180, "freezable": False,
-        "bulk_note": "Shelf-stable; keep sealed against weevils.",
-        "match": {
-            "any_of": [["брашно"], ["flour"], ["mehl"]],
-            "none": ["бебешко", "baby", "формула", "formula"],
-        },
-    },
-    "food.sugar": {
-        "class": "consumable", "label": "White sugar", "unit": "kg",
-        "bulk_qty": 10.0, "restock_days": 180, "freezable": False,
-        "bulk_note": "Shelf-stable indefinitely.",
-        "match": {
-            "any_of": [["захар"], ["sugar"], ["zucker"]],
-            "none": ["заместител", "substitute", "стевия", "stevia", "сорбитол",
-                     "sorbitol"],
+            "any_of": [["кускус"], ["couscous"], ["kuskus"]],
+            "none": ["салата", "salad", "готов", "ready", "бебешк", "baby"],
         },
     },
     "food.lentils": {
         "class": "consumable", "label": "Lentils, dried", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 180, "freezable": False,
+        "bulk_qty": 5.0, "restock_days": 180, "shelf_life_days": 730,
+        "freezable": False,
         "bulk_note": "Shelf-stable for years dry.",
         "match": {
             # "леща" is also Bulgarian for "lens" (glasses/camera) -- hard veto below.
@@ -225,11 +273,12 @@ WATCHLIST = {
     },
     "food.beans_dried": {
         "class": "consumable", "label": "Dried beans", "unit": "kg",
-        "bulk_qty": 5.0, "restock_days": 180, "freezable": False,
+        "bulk_qty": 5.0, "restock_days": 180, "shelf_life_days": 730,
+        "freezable": False,
         "bulk_note": "Shelf-stable for years dry.",
         "match": {
             # "beans" alone also appears in "coffee beans" -- veto it here so this
-            # rule never steals food.coffee_beans's match.
+            # rule never steals food.coffee_ground's match.
             "any_of": [["боб"], ["beans"], ["bohnen"], ["сух", "боб"]],
             "none": ["кафе", "coffee", "зелен", "green", "консерв", "canned",
                      "tinned"],
@@ -237,7 +286,8 @@ WATCHLIST = {
     },
     "food.oats": {
         "class": "consumable", "label": "Rolled oats", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 150, "freezable": False,
+        "bulk_qty": 6.0, "restock_days": 150, "shelf_life_days": 270,
+        "freezable": False,
         "bulk_note": "Shelf-stable for months sealed.",
         "match": {
             "any_of": [["овесени", "ядки"], ["oats"], ["haferflocken"],
@@ -248,10 +298,10 @@ WATCHLIST = {
     },
     # ── Bulk food: tinned goods ───────────────────────────────────────────
     "food.tomatoes_tinned": {
-        # 400 g tin at ~0.55 EUR -> ~1.35 EUR/kg; par set a little under that.
         "class": "consumable", "label": "Tinned tomatoes (chopped/peeled)", "unit": "kg",
-        "bulk_qty": 12.0, "restock_days": 150, "freezable": False,
-        "bulk_note": "Shelf-stable for 2+ years; stack a case of tins.",
+        "bulk_qty": 4.8, "restock_days": 150, "shelf_life_days": 730,
+        "freezable": False,
+        "bulk_note": "12 x 400 g tins. Shelf-stable for 2+ years; stack a case.",
         "match": {
             "any_of": [["домати", "консерва"], ["tinned", "tomatoes"],
                        ["tomaten", "dose"], ["домати", "белени"]],
@@ -260,9 +310,9 @@ WATCHLIST = {
         },
     },
     "food.tuna_tinned": {
-        # 160 g tin at ~1.20 EUR -> ~7.50 EUR/kg tin weight; par a touch under that.
         "class": "consumable", "label": "Tinned tuna", "unit": "kg",
-        "bulk_qty": 3.0, "restock_days": 150, "freezable": False,
+        "bulk_qty": 3.0, "restock_days": 150, "shelf_life_days": 1095,
+        "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
             "any_of": [["риба", "тон"], ["tuna"], ["thunfisch"], ["тон", "консерва"]],
@@ -271,9 +321,9 @@ WATCHLIST = {
         },
     },
     "food.sweetcorn_tinned": {
-        # 340 g tin at ~0.80 EUR -> ~2.35 EUR/kg; par a touch under that.
         "class": "consumable", "label": "Tinned sweetcorn", "unit": "kg",
-        "bulk_qty": 4.0, "restock_days": 150, "freezable": False,
+        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "freezable": False,
         "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
             "any_of": [["царевица", "консерва"], ["sweetcorn"], ["mais", "dose"],
@@ -282,21 +332,36 @@ WATCHLIST = {
                      "fresh"],
         },
     },
-    # ── Bulk food: dairy and eggs ─────────────────────────────────────────
-    "food.butter": {
-        # 250 g pack at ~2.20 EUR -> ~8.80 EUR/kg; par a touch under that.
-        "class": "consumable", "label": "Butter", "unit": "kg",
-        "bulk_qty": 2.0, "restock_days": 90, "freezable": True,
-        "bulk_note": "Freezes well; buy several packs when on promo.",
+    "food.peas_tinned": {
+        "class": "consumable", "label": "Tinned green peas", "unit": "kg",
+        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "freezable": False,
+        "bulk_note": "Shelf-stable for years; stock a case of tins.",
         "match": {
-            "any_of": [["краве", "масло"], ["butter"], ["buttermilch"]],
-            "none": ["маргарин", "margarine", "олио", "растителна", "vegetable",
-                     "spread", "намазка", "topping"],
+            # The "морков"/"carrot" veto is measured, not speculative: without it
+            # ["грах"] matched "Грах с моркови (ОНТ 530g)" in the fixtures — peas
+            # with carrots, a different product at a different price.
+            "any_of": [["зелен", "грах"], ["грах"], ["green", "peas"], ["erbsen"]],
+            "none": ["супа", "soup", "пюре", "puree", "бебешк", "baby", "снакс",
+                     "snack", "чипс", "нахут", "жълт", "морков", "carrot"],
         },
     },
+    "food.chickpeas_tinned": {
+        "class": "consumable", "label": "Tinned chickpeas", "unit": "kg",
+        "bulk_qty": 4.0, "restock_days": 150, "shelf_life_days": 1095,
+        "freezable": False,
+        "bulk_note": "Shelf-stable for years; stock a case of tins.",
+        "match": {
+            "any_of": [["нахут"], ["chickpeas"], ["kichererbsen"], ["chick", "peas"]],
+            "none": ["хумус", "hummus", "паста", "снакс", "snack", "чипс",
+                     "бебешк", "baby"],
+        },
+    },
+    # ── Bulk food: dairy and eggs ─────────────────────────────────────────
     "food.cheese_hard": {
         "class": "consumable", "label": "Hard cheese (cheddar/gouda/parmesan)", "unit": "kg",
-        "bulk_qty": 2.0, "restock_days": 60, "freezable": True,
+        "bulk_qty": 2.0, "restock_days": 60, "shelf_life_days": 60,
+        "freezable": True,
         "bulk_note": "Vacuum-wrap and freeze in 250 g blocks; keeps 2 months.",
         "match": {
             "any_of": [["чедър"], ["гауда"], ["едам"], ["пармезан"], ["cheddar"],
@@ -307,7 +372,8 @@ WATCHLIST = {
     },
     "food.kashkaval": {
         "class": "consumable", "label": "Kashkaval (BG yellow cheese)", "unit": "kg",
-        "bulk_qty": 2.0, "restock_days": 45, "freezable": True,
+        "bulk_qty": 2.0, "restock_days": 45, "shelf_life_days": 60,
+        "freezable": True,
         "bulk_note": "Vacuum-wrap and freeze in 250 g blocks; keeps 2 months.",
         "match": {
             "any_of": [["кашкавал"], ["kashkaval"]],
@@ -315,22 +381,38 @@ WATCHLIST = {
                      "чедър", "cheddar"],
         },
     },
-    "food.milk": {
-        "class": "consumable", "label": "Milk (fresh or UHT)", "unit": "L",
-        "bulk_qty": 12.0, "restock_days": 30, "freezable": False,
-        "bulk_note": "Only UHT stacks; fresh milk buy weekly at this par.",
+    "food.cottage_cheese": {
+        "class": "consumable", "label": "Cottage cheese (извара)", "unit": "kg",
+        "bulk_qty": 1.5, "restock_days": 21, "shelf_life_days": 21,
+        "freezable": False,
+        "bulk_note": "Lidl own brand, 4-5 tubs a visit. Short life; do not overbuy.",
         "match": {
-            "any_of": [["прясно", "мляко"], ["fresh", "milk"], ["frischmilch"],
-                       ["uht", "мляко"]],
-            "none": ["кисело", "yoghurt", "йогурт", "сухо", "powder", "бебешко",
-                     "baby", "формула", "formula", "шоколадово", "chocolate",
-                     "какао", "cocoa", "овесено", "oat", "соево", "soy",
-                     "бадемово", "almond"],
+            "any_of": [["извара"], ["cottage", "cheese"], ["hüttenkäse"],
+                       ["huttenkase"], ["крема", "извара"]],
+            "none": ["кашкавал", "сирене", "cheddar", "гауда", "десерт", "dessert",
+                     "бебешк", "baby"],
+        },
+    },
+    "food.milk": {
+        # UHT only. The user buys 1 L UHT to stack and explicitly does not care
+        # about fresh milk, which cannot be stocked up on at all.
+        "class": "consumable", "label": "UHT milk (1 L)", "unit": "L",
+        "bulk_qty": 12.0, "restock_days": 30, "shelf_life_days": 180,
+        "freezable": False,
+        "bulk_note": "Only UHT stacks; a case keeps ~6 months unopened.",
+        "match": {
+            "any_of": [["uht", "мляко"], ["uht", "milk"], ["uht"],
+                       ["трайно", "мляко"], ["h", "milch"], ["haltbare", "milch"]],
+            "none": ["прясно", "fresh", "frischmilch", "кисело", "yoghurt",
+                     "йогурт", "сухо", "powder", "бебешко", "baby", "формула",
+                     "formula", "шоколадово", "chocolate", "какао", "cocoa",
+                     "овесено", "oat", "соево", "soy", "бадемово", "almond"],
         },
     },
     "food.yoghurt": {
         "class": "consumable", "label": "Plain yoghurt", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 21, "freezable": False,
+        "bulk_qty": 6.0, "restock_days": 21, "shelf_life_days": 21,
+        "freezable": False,
         "bulk_note": "Short shelf life; buy for ~3 weeks at a time only.",
         "match": {
             "any_of": [["кисело", "мляко"], ["yoghurt"], ["joghurt"], ["йогурт"]],
@@ -341,7 +423,8 @@ WATCHLIST = {
     "food.eggs": {
         # Priced per egg; a 10-pack at ~1.80 EUR is ~0.18 EUR/egg.
         "class": "consumable", "label": "Eggs", "unit": "pc",
-        "bulk_qty": 30.0, "restock_days": 30, "freezable": False,
+        "bulk_qty": 30.0, "restock_days": 30, "shelf_life_days": 35,
+        "freezable": False,
         "bulk_note": "Buy ~30 at a time; keep refrigerated 4-5 weeks.",
         "match": {
             "any_of": [["яйца"], ["eggs"], ["eier"]],
@@ -349,31 +432,12 @@ WATCHLIST = {
                      "easter", "прах", "powder", "майонеза", "mayo"],
         },
     },
-    # ── Bulk food: oils and condiments ───────────────────────────────────
-    "food.sunflower_oil": {
-        "class": "consumable", "label": "Sunflower oil", "unit": "L",
-        "bulk_qty": 10.0, "restock_days": 180, "freezable": False,
-        "bulk_note": "Shelf-stable for a year+; buy the case.",
-        "match": {
-            "any_of": [["слънчогледово", "масло"], ["sunflower", "oil"],
-                       ["sonnenblumenol"]],
-            "none": ["маслиново", "olive", "зехтин", "рапично", "rapeseed",
-                     "сапун", "soap", "козметик", "cosmetic"],
-        },
-    },
-    "food.vinegar": {
-        "class": "consumable", "label": "Vinegar", "unit": "L",
-        "bulk_qty": 5.0, "restock_days": 365, "freezable": False,
-        "bulk_note": "Shelf-stable indefinitely.",
-        "match": {
-            "any_of": [["оцет"], ["vinegar"], ["essig"]],
-            "none": ["почистващ", "cleaning", "препарат", "clean"],
-        },
-    },
+    # ── Bulk food: condiments and preserves ──────────────────────────────
     "food.honey": {
         # 500 g jar at ~3.50 EUR -> ~7.00 EUR/kg.
         "class": "consumable", "label": "Honey", "unit": "kg",
-        "bulk_qty": 3.0, "restock_days": 180, "freezable": False,
+        "bulk_qty": 3.0, "restock_days": 180, "shelf_life_days": 1095,
+        "freezable": False,
         "bulk_note": "Shelf-stable indefinitely; buy several jars.",
         "match": {
             "any_of": [["мед", "пчелен"], ["honey"], ["honig"],
@@ -382,31 +446,24 @@ WATCHLIST = {
                      "shampoo", "бонбони", "candy", "сладки", "desert"],
         },
     },
-    # ── Bulk food: nuts, dried fruit, frozen veg, coffee/tea ─────────────
-    "food.walnuts": {
-        "class": "consumable", "label": "Walnuts, shelled", "unit": "kg",
-        "bulk_qty": 2.0, "restock_days": 120, "freezable": True,
-        "bulk_note": "Freeze to stop rancidity if stocking beyond 2 months.",
+    "food.lutenitsa": {
+        "class": "consumable", "label": "Lutenitsa", "unit": "kg",
+        "bulk_qty": 3.0, "restock_days": 180, "shelf_life_days": 730,
+        "freezable": False,
+        "bulk_note": "Shelf-stable for 2 years unopened; buy the case at a good promo.",
         "match": {
-            "any_of": [["орехи"], ["walnuts"], ["walnusse"]],
-            "none": ["масло", "butter", "паста", "spread", "шоколад",
-                     "chocolate"],
+            "any_of": [["лютеница"], ["lutenitsa"], ["lyutenitsa"]],
+            "none": ["люто", "чили", "chili", "сос", "sauce", "кетчуп", "ketchup"],
         },
     },
-    "food.almonds": {
-        "class": "consumable", "label": "Almonds, shelled", "unit": "kg",
-        "bulk_qty": 2.0, "restock_days": 120, "freezable": True,
-        "bulk_note": "Freeze to stop rancidity if stocking beyond 2 months.",
-        "match": {
-            "any_of": [["бадеми"], ["almonds"], ["mandeln"]],
-            "none": ["масло", "butter", "мляко", "milk", "паста", "spread",
-                     "есенция", "extract", "шоколад", "chocolate"],
-        },
-    },
+    # ── Frozen ────────────────────────────────────────────────────────────
     "food.frozen_vegetables": {
+        # 9 x 2.5 kg bags — the user buys 2.5 kg bags, 8-10 at a time, limited only
+        # by freezer space.
         "class": "consumable", "label": "Frozen mixed/single vegetables", "unit": "kg",
-        "bulk_qty": 6.0, "restock_days": 60, "freezable": True,
-        "bulk_note": "Already frozen; just needs freezer space.",
+        "bulk_qty": 22.5, "restock_days": 60, "shelf_life_days": 365,
+        "freezable": True,
+        "bulk_note": "9 x 2.5 kg bags. Already frozen; just needs freezer space.",
         "match": {
             "any_of": [["замразени", "зеленчуци"], ["frozen", "vegetables"],
                        ["tiefkuhlgemuse"], ["замразен", "микс"]],
@@ -414,141 +471,18 @@ WATCHLIST = {
                      "супа", "soup"],
         },
     },
-    "food.tea": {
-        # A 40-50 g box of bags at ~1.50-1.80 EUR runs ~30-40 EUR/kg by weight;
-        # that is the real economics of bagged tea, not a data-entry error.
-        "class": "consumable", "label": "Tea (bagged or loose)", "unit": "kg",
-        "bulk_qty": 0.5, "restock_days": 180, "freezable": False,
-        "bulk_note": "Shelf-stable; buy a few boxes at a genuinely good promo.",
-        "match": {
-            "any_of": [["чай"], ["tea"], ["tee"]],
-            "none": ["сапун", "soap", "масло", "oil", "свещ", "candle",
-                     "козметик", "cosmetic", "чайник", "teapot", "чаша", "cup"],
-        },
-    },
     # ── Household consumables ────────────────────────────────────────────
-    "house.dishwasher_tablets": {
-        # Box of 60 at ~9 EUR -> ~0.15 EUR/tablet.
-        "class": "consumable", "label": "Dishwasher tablets", "unit": "pc",
-        "bulk_qty": 120.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Shelf-stable; two boxes covers 4 months of daily use.",
-        "match": {
-            "any_of": [["таблетки", "съдомиялна"], ["dishwasher", "tablets"],
-                       ["spulmaschinentabs"], ["капсули", "съдомиялна"]],
-            "none": ["сол", "salt", "гланц", "rinse"],
-        },
-    },
-    "house.laundry_capsules": {
-        # Box of 30 at ~7.50 EUR -> ~0.25 EUR/capsule.
-        "class": "consumable", "label": "Laundry capsules/pods", "unit": "pc",
-        "bulk_qty": 90.0, "restock_days": 90, "freezable": False,
-        "bulk_note": "Shelf-stable; three boxes covers ~3 months.",
-        "match": {
-            "any_of": [["капсули", "пране"], ["laundry", "capsules"],
-                       ["waschkapseln"], ["капсули", "перилен"]],
-            "none": ["омекотител", "softener", "съдомиялна", "dishwasher",
-                     "прах", "powder", "гел", "gel"],
-        },
-    },
-    "house.fabric_softener": {
-        "class": "consumable", "label": "Fabric softener", "unit": "L",
-        "bulk_qty": 5.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Shelf-stable; buy several bottles when cheap.",
-        "match": {
-            "any_of": [["омекотител", "пране"], ["fabric", "softener"],
-                       ["weichspuler"], ["омекотител", "дрехи"]],
-            "none": ["съдомиялна", "dishwasher", "прах", "powder", "капсул",
-                     "capsule", "гел", "gel"],
-        },
-    },
     "house.toilet_paper": {
         # 10-roll pack at ~4.50 EUR -> ~0.45 EUR/roll.
         "class": "consumable", "label": "Toilet paper", "unit": "pc",
-        "bulk_qty": 40.0, "restock_days": 90, "freezable": False,
+        "bulk_qty": 40.0, "restock_days": 90, "shelf_life_days": 3650,
+        "freezable": False,
         "bulk_note": "Shelf-stable; buy 4 packs at a time.",
         "match": {
             "any_of": [["тоалетна", "хартия"], ["toilet", "paper"],
                        ["toilettenpapier"]],
             "none": ["кухненска", "kitchen", "влажни", "wet", "салфетки",
                      "napkins"],
-        },
-    },
-    "house.kitchen_roll": {
-        "class": "consumable", "label": "Kitchen roll / paper towels", "unit": "pc",
-        "bulk_qty": 12.0, "restock_days": 90, "freezable": False,
-        "bulk_note": "Shelf-stable; buy a bulk pack of rolls.",
-        "match": {
-            "any_of": [["кухненска", "хартия"], ["kitchen", "roll"],
-                       ["kuchenrolle"], ["кухненски", "рула"]],
-            "none": ["тоалетна", "toilet", "влажни", "wet", "салфетки",
-                     "napkins"],
-        },
-    },
-    "house.bin_bags": {
-        # Box of 20 at ~3.00 EUR -> ~0.15 EUR/bag.
-        "class": "consumable", "label": "Bin bags", "unit": "pc",
-        "bulk_qty": 60.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Shelf-stable; buy 3 boxes at a time.",
-        "match": {
-            "any_of": [["чували", "боклук"], ["bin", "bags"], ["mullbeutel"],
-                       ["торбички", "боклук"]],
-            "none": ["прахосмукачка", "vacuum", "филтър", "filter", "компост",
-                     "compost"],
-        },
-    },
-    "house.all_purpose_cleaner": {
-        "class": "consumable", "label": "All-purpose cleaner", "unit": "L",
-        "bulk_qty": 4.0, "restock_days": 90, "freezable": False,
-        "bulk_note": "Shelf-stable; buy a few bottles/refills.",
-        "match": {
-            "any_of": [["универсален", "препарат"], ["all", "purpose", "cleaner"],
-                       ["allzweckreiniger"], ["почистващ", "спрей"]],
-            "none": ["съдомиялна", "dishwasher", "пране", "laundry", "тоалетна",
-                     "toilet"],
-        },
-    },
-    "house.shampoo": {
-        # 250 ml bottle at ~2.50 EUR -> ~10 EUR/L; par set a touch under that.
-        "class": "consumable", "label": "Shampoo", "unit": "L",
-        "bulk_qty": 2.0, "restock_days": 90, "freezable": False,
-        "bulk_note": "Shelf-stable; buy 2-3 large bottles at a good promo.",
-        "match": {
-            "any_of": [["шампоан"], ["shampoo"]],
-            "none": ["балсам", "conditioner", "куче", "dog", "коте", "cat",
-                     "животни", "pets", "боя", "dye"],
-        },
-    },
-    "house.toothpaste": {
-        # A tube at a good promo runs ~1 EUR.
-        "class": "consumable", "label": "Toothpaste", "unit": "pc",
-        "bulk_qty": 6.0, "restock_days": 120, "freezable": False,
-        "bulk_note": "Shelf-stable; buy 6 tubes at a good promo.",
-        "match": {
-            "any_of": [["паста", "зъби"], ["toothpaste"], ["zahnpasta"]],
-            "none": ["четка", "brush", "конец", "floss", "уста", "mouthwash"],
-        },
-    },
-    "baby.nappies": {
-        # A pack of 44 at ~11 EUR -> ~0.25 EUR/nappy; par set a touch under that.
-        "class": "consumable", "label": "Nappies", "unit": "pc",
-        "bulk_qty": 176.0, "restock_days": 45, "freezable": False,
-        "bulk_note": "Buy 4 packs at a time; check size before stocking up.",
-        "match": {
-            "any_of": [["пелени"], ["nappies"], ["diapers"], ["windeln"]],
-            "none": ["куче", "dog", "коте", "cat", "животни", "pets",
-                     "кърпички", "wipes"],
-        },
-    },
-    "baby.wipes": {
-        # A pack of 80 at ~2.00 EUR -> ~0.025 EUR/wipe.
-        "class": "consumable", "label": "Baby wipes", "unit": "pc",
-        "bulk_qty": 640.0, "restock_days": 60, "freezable": False,
-        "bulk_note": "Buy 8 packs at a time; shelf-stable sealed.",
-        "match": {
-            "any_of": [["мокри", "кърпички"], ["wet", "wipes"], ["feuchttucher"],
-                       ["бебешки", "кърпички"]],
-            "none": ["дезинфекциращи", "disinfect", "повърхност", "surface",
-                     "тоалетна", "toilet", "пелени", "nappies", "diapers"],
         },
     },
 }
