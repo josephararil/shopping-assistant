@@ -151,6 +151,27 @@ So an SMTP failure retries next run instead of silently swallowing a week.
 ### `deals_history.json` is appended only from the exact emailed set
 It is the `web/` UI's data source and must reflect what was actually sent.
 
+### A `deals_history.json` entry is a CONTRACT with `web/src/App.jsx`, enforced by a test
+The email renders its numbers through `_headline()`, but `web/` re-renders them from the raw
+fields, so the entry needs both halves: `ITEM_BLOCKS` (prose) **and** `ITEM_DATA_FIELDS`
+(structured numbers). Both are consumed by `_item_dict`; **add a field to a list, never to
+`_item_dict` directly.**
+
+This drifted once and failed invisibly: 15 of the 26 fields App.jsx reads were never emitted, so
+every card rendered with no price and no score ring, the `sku_class` filter matched nothing, and
+`the_math` — a `required` field of `STAGE_AUDIT_SCHEMA` that the prompt teaches with a worked
+example — was paid for every run and displayed nowhere. Nothing caught it because `test_stub.py`
+asserted the *count* of entries, not their *shape*.
+
+`test_stub.py` now greps `App.jsx` for `e.<field>` and asserts every one is emitted, rather than
+comparing against a hand-copied list — a copy being the exact thing that drifted. If you add a
+field to App.jsx, that test tells you to emit it.
+
+**`bulk_total_eur` is computed in Python, not in App.jsx.** The stock-up line wants
+`unit_price x bulk_qty`; `price_eur` is the PACK price. Passing `price_eur` through rendered
+"buy 5 kg = €9.80" instead of €49.00 — wrong in a way that looks entirely plausible, which is why
+it has its own assertion. Python owns all arithmetic, in the UI's numbers too.
+
 ### Thresholds reach prompts only via `gates_prompt_text()`
 The travel repo hardcoded `>= 80` in a prompt while the real gate lived in `STAGE1_MIN_SCORE`; they
 drifted and the prompt confidently lied to the model for months.

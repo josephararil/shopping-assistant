@@ -297,6 +297,39 @@ try:
         f"expected 2 emailed deals (salmon Fair + Sony Strong), got {len(deals_hist['entries'])}"
     print("deals_history.json holds exactly the emailed set [OK]")
 
+    # deals_history.json is web/'s ONLY input, and web/ re-renders the numbers itself rather
+    # than reusing `headline`. So the entry shape is a contract with App.jsx, and it silently
+    # broke once already: 15 of the 28 fields App.jsx reads were never emitted, leaving every
+    # card with no price and no score and making the sku_class filter match nothing.
+    # Assert against App.jsx ITSELF rather than a hand-copied list here — a copy is the very
+    # thing that drifted. `e.target` is DOM event handling, not an entry field.
+    app_jsx = open(os.path.join(_cwd, "web", "src", "App.jsx"), encoding="utf-8").read()
+    consumed = set(re.findall(r"\be\.([a-z_]+)", app_jsx)) - {"target"}
+    for entry in deals_hist["entries"]:
+        missing = sorted(consumed - set(entry))
+        assert not missing, \
+            f"web/src/App.jsx reads fields deals_history.json never emits: {missing}"
+    print(f"deals_history entries satisfy all {len(consumed)} fields App.jsx reads [OK]")
+
+    # The stock-up total must be the BULK total, not the pack price. price_eur is the pack
+    # price; passing it through printed "buy 5 kg = EUR 9.80" instead of EUR 49.00 — wrong in
+    # a way that looks entirely plausible, which is why it has its own assertion.
+    salmon = next(e for e in deals_hist["entries"] if e["sku"] == "food.salmon_fillet")
+    assert salmon["bulk_total_eur"] == 49.00, \
+        f"bulk_total_eur must be unit_price x bulk_qty = 49.00, got {salmon['bulk_total_eur']}"
+    assert salmon["price_eur"] != salmon["bulk_total_eur"], \
+        "pack price and stock-up total must stay distinct fields"
+    print("bulk_total_eur is the stock-up total, distinct from the pack price [OK]")
+
+    # the_math is required by STAGE_AUDIT_SCHEMA and the prompt teaches it with a worked
+    # example; it used to be absent from ITEM_BLOCKS, so it was paid for every run and
+    # rendered in neither the email nor web/.
+    assert salmon.get("the_math"), "the_math must reach deals_history.json"
+    the_math = "not yet at the 20% Strong-Buy rung"
+    assert the_math in html_body, "the_math must render in the email HTML"
+    assert the_math in text_body, "the_math must render in the email text part"
+    print("the_math reaches both the email and deals_history.json [OK]")
+
     # last_run.json: non-empty failed_gates histogram (calibration instrument).
     last_run = json.load(open("state/last_run.json", encoding="utf-8"))
     assert last_run.get("failed_gates"), "failed_gates histogram must not be empty"

@@ -345,9 +345,11 @@ function consumableLine(e) {
     const pct = fmtPct(e.discount);
     s += ` vs €${par} par${pct ? ` (${pct} under)` : ""}`;
   }
-  if (e.qty != null && e.price_eur != null && e.saving_eur != null) {
+  // bulk_total_eur, not price_eur: price_eur is the PACK price, and the pipeline computes
+  // the stock-up total (unit price x bulk qty) so no arithmetic happens in here.
+  if (e.qty != null && e.bulk_total_eur != null && e.saving_eur != null) {
     const qty = Number.isInteger(e.qty) ? `${e.qty}` : e.qty.toFixed(2);
-    s += ` · buy ${qty} ${e.unit || ""} = €${fmt2(e.price_eur)}, saves €${fmt2(e.saving_eur)}`;
+    s += ` · buy ${qty} ${e.unit || ""} = €${fmt2(e.bulk_total_eur)}, saves €${fmt2(e.saving_eur)}`;
   }
   return s;
 }

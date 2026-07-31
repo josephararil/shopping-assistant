@@ -365,10 +365,50 @@ def _top5(emailable):
 ITEM_BLOCKS = [
     ("about", lambda c: c.get("about") or ""),
     ("value_case", lambda c: c.get("value_case") or ""),
+    # the_math is the audit's headline arithmetic — perceived vs actual saving. It is a
+    # required field of STAGE_AUDIT_SCHEMA and the prompt spends a worked example on it,
+    # so leaving it out of this list paid for it every run and rendered it nowhere.
+    ("the_math", lambda c: c.get("the_math") or ""),
     ("market_insight", lambda c: c.get("market_insight") or ""),
     ("bulk_advice", lambda c: c.get("bulk_advice") or ""),
     ("red_flags", lambda c: c.get("red_flags") or ""),
 ]
+
+# The STRUCTURED half of the item contract, as ITEM_BLOCKS is the prose half. The email
+# renders numbers via _headline(), but web/ re-renders them itself and so needs them as
+# fields: 15 of the 26 keys App.jsx reads used to be absent here, which left every card
+# blank of price and score and made the sku_class filter match nothing.
+#
+# bulk_total_eur is computed HERE and not in App.jsx on purpose. Python owns all
+# arithmetic (see CLAUDE.md), and App.jsx's bulk line wants the stock-up total while
+# `price_eur` is the pack price — passing price_eur through would print
+# "buy 5 kg = EUR 9.80" instead of EUR 49.00, wrong in a way that looks plausible.
+ITEM_DATA_FIELDS = [
+    ("sku_class", lambda c, cfg: c.get("sku_class")),
+    ("label", lambda c, cfg: cfg.get("label")),
+    ("unit", lambda c, cfg: c.get("unit") or cfg.get("unit")),
+    ("qty", lambda c, cfg: cfg.get("bulk_qty")),
+    ("unit_price_eur", lambda c, cfg: c.get("unit_price_eur")),
+    ("price_eur", lambda c, cfg: c.get("price_eur")),
+    ("bulk_total_eur", lambda c, cfg: _bulk_total(c, cfg)),
+    ("par_eur", lambda c, cfg: c.get("par_eur")),
+    ("trigger_eur", lambda c, cfg: cfg.get("trigger_eur")),
+    ("reference_price_eur", lambda c, cfg: c.get("reference_price_eur")),
+    ("discount", lambda c, cfg: c.get("discount")),
+    ("saving_eur", lambda c, cfg: c.get("saving_eur")),
+    ("fit_score", lambda c, cfg: c.get("fit_score")),
+    ("evidence", lambda c, cfg: c.get("evidence")),
+    ("valid_until", lambda c, cfg: c.get("valid_until")),
+]
+
+
+def _bulk_total(c, sku_cfg):
+    """What a stock-up actually costs: unit price x bulk_qty. None unless both are known,
+    so the UI omits the clause rather than printing a wrong total."""
+    unit_price, bulk_qty = c.get("unit_price_eur"), sku_cfg.get("bulk_qty")
+    if unit_price is None or not bulk_qty:
+        return None
+    return round(unit_price * bulk_qty, 2)
 
 
 def _consumable_line(c):
@@ -424,6 +464,7 @@ def _headline(c):
 
 
 def _item_dict(c):
+    sku_cfg = catalog.CATALOG.get(c.get("sku")) or {}
     d = {
         "sku": c.get("sku"), "name": c.get("name"), "retailer": c.get("retailer"),
         "verdict": c.get("verdict"), "url": c.get("url"),
@@ -431,6 +472,8 @@ def _item_dict(c):
     }
     for key, fn in ITEM_BLOCKS:
         d[key] = fn(c)
+    for key, fn in ITEM_DATA_FIELDS:
+        d[key] = fn(c, sku_cfg)
     return d
 
 
