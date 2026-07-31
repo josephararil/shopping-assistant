@@ -79,6 +79,7 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
                 "name": "seed"}
     _NONE_P = {"n": 0, "min": None, "p10": None, "median": None, "last": None}
     _WIDE = [2.00, 3.00, 5.00, 12.00]     # p90/p10 = 6.0x -> over BASELINE_MAX_SPREAD
+    _WIDE_PROMO = [6.00, 9.00, 15.00, 36.00]   # also 6.0x, but in the PROMO series only
     _TIGHT_CHICKEN = [5.80, 6.00, 6.20, 6.40]
     _TIGHT_PORK = [4.80, 4.90, 5.00, 5.10]
     json.dump({"skus": {
@@ -96,10 +97,17 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
                       "regular": {"n": 4, "median": 4.00, "span_days": 45}},
         },
         "food.kashkaval": {
+            # The promo prices are deliberately WIDE (6.00..36.00, p90/p10 = 6.0x, over
+            # BASELINE_MAX_SPREAD). Inherited from the food.coffee_beans seed this
+            # replaced, they were four flat 28.00s — a 1.0x spread, so the "must produce
+            # no maintenance line" assertion below passed even if the promo series HAD
+            # leaked into the reference. It could not fail, so it guarded nothing.
+            # Widening them makes the assertion real: if baseline_stats ever reads promo
+            # observations, food.kashkaval appears with a 6.0x spread and the test fails.
             "unit": "kg", "class": "consumable",
-            "promo": [_obs(d, 28.00, "lidl") for (d,) in _D],
+            "promo": [_obs(d, pr, "lidl") for (d,), pr in zip(_D, _WIDE_PROMO)],
             "regular": [],
-            "stats": {"promo": {"n": 4, "min": 28.00, "p10": 28.00, "median": 28.00, "last": 28.00},
+            "stats": {"promo": {"n": 4, "min": 6.00, "p10": 6.00, "median": 12.00, "last": 36.00},
                       "regular": {"n": 0, "median": None, "span_days": 0}},
         },
         "food.pork_meat": {
