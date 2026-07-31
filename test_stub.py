@@ -8,11 +8,13 @@ Runs the real pipeline (find_deals.main()) in a throwaway temp directory with:
   - common.send_email stubbed to capture the digest instead of sending it.
 
 Fixtures (see OFFERS below):
-  - Lidl salmon fillet promo at 9.80 EUR/kg vs a 12.00 EUR/kg par -> Fair (18% under, below
+  - Lidl salmon fillet promo at 9.80 EUR/kg with NO seeded shelf series -> falls to the
+    L3 llm_reference at 12.00 EUR/kg -> Fair (18% under, below
     the 20% Strong-Buy discount rung) -> exercises the exact
     "buy 5 kg = 49.00 EUR, saves 11.00 EUR" consumable line.
-  - Lidl chicken breast promo at 9.00 EUR/kg vs a 6.00 EUR/kg par -> rejected `over_par` at
-    Stage 2, before any LLM sees it -> exercises the reject footer's real EUR/kg-vs-par line.
+  - Lidl chicken breast promo at 9.00 EUR/kg vs a 6.00 EUR/kg observed shelf p25 ->
+    rejected `over_reference` at Stage 2, before any LLM sees it -> exercises the
+    reject footer's real EUR/kg-vs-shelf-price line.
   - Sony WH-1000XM5 at 179 EUR against its 200 EUR trigger -> Strong Buy outright, with NO
     reference price -> exercises the "no reference price" durable rendering and the
     HTML-escaping test (its audited value_case prose carries <script> and "Ben & Jerry's").
@@ -46,22 +48,50 @@ os.chdir(sandbox)
 with open("state/catalog_health.json", "w", encoding="utf-8") as f:
     json.dump({"skus": {"house.laundry_gel": {"runs_since_matched": 7, "last_matched": "2026-06-01"}}}, f)
 
-# Seed price_history for the Par review block (find_deals.par_review_lines):
-#   house.laundry_gel  par 4.50/L, REGULAR median 6.00/L over 30d, n=4 -> 33% gap -> a line.
-#   food.coffee_beans  par 14.00/kg, PROMO median 28.00/kg, n=4 -> must produce NO line.
-# The second half is the load-bearing one: a gap measured against PROMO prices is just the
-# discount, and reporting it would send the user chasing their par downhill every week.
+# Seed price_history for TWO things at once:
+#
+# 1. The observed REFERENCE (config.reference_for L2 / history.baseline_stats). Every
+#    consumable verdict below is measured against these numbers rather than a par.
+# 2. The Catalog maintenance block (find_deals.maintenance_lines), which is the visible
+#    half of the wide-spread Fair ceiling.
+#
+#   food.chicken_breast  a TIGHT shelf series around 6.00/kg -> a usable high-confidence
+#                        reference, so 9.00/kg is rejected over_reference.
+#   house.laundry_gel    a WIDE series, 2.00..12.00/L -> spread far over
+#                        BASELINE_MAX_SPREAD, so it must appear in the maintenance block.
+#   food.pork_meat       a TIGHT series -> must NOT appear in the maintenance block. This
+#                        is what keeps the threshold load-bearing: without it, deleting
+#                        the spread check entirely still passed.
+#   food.coffee_beans    PROMO observations only, no regular ones. It must produce NO
+#                        maintenance line and NO reference — a promo series is every
+#                        source by construction, and letting it inform the reference is
+#                        failure mode #1, which fails invisibly.
 _D = [(60, ), (45, ), (30, ), (15, )]
 with open("state/price_history.json", "w", encoding="utf-8") as f:
     def _obs(days_ago, price, source):
         d = (dt.date(2026, 7, 30) - dt.timedelta(days=days_ago)).isoformat()
-        return {"d": d, "source": source, "unit_price_eur": price, "note": ""}
+        # product_code must be distinct per observation, or record_regular's (d,
+        # product_code) upsert would legitimately collapse a seeded series into one row.
+        return {"d": d, "source": source, "unit_price_eur": price, "note": "",
+                "retailer": "Lidl", "product_code": f"seed-{days_ago}-{price}",
+                "name": "seed"}
+    _NONE_P = {"n": 0, "min": None, "p10": None, "median": None, "last": None}
+    _WIDE = [2.00, 3.00, 5.00, 12.00]     # p90/p10 = 6.0x -> over BASELINE_MAX_SPREAD
+    _TIGHT_CHICKEN = [5.80, 6.00, 6.20, 6.40]
+    _TIGHT_PORK = [4.80, 4.90, 5.00, 5.10]
     json.dump({"skus": {
+        "food.chicken_breast": {
+            "unit": "kg", "class": "consumable", "promo": [],
+            "regular": [_obs(d, pr, "lidl_regular")
+                        for (d,), pr in zip(_D, _TIGHT_CHICKEN)],
+            "stats": {"promo": _NONE_P,
+                      "regular": {"n": 4, "median": 6.10, "span_days": 45}},
+        },
         "house.laundry_gel": {
             "unit": "L", "class": "consumable", "promo": [],
-            "regular": [_obs(d, 6.00, "corroborate") for (d,) in _D],
-            "stats": {"promo": {"n": 0, "min": None, "p10": None, "median": None, "last": None},
-                      "regular": {"n": 4, "median": 6.00, "span_days": 45}},
+            "regular": [_obs(d, pr, "lidl_regular") for (d,), pr in zip(_D, _WIDE)],
+            "stats": {"promo": _NONE_P,
+                      "regular": {"n": 4, "median": 4.00, "span_days": 45}},
         },
         "food.coffee_beans": {
             "unit": "kg", "class": "consumable",
@@ -70,14 +100,11 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
             "stats": {"promo": {"n": 4, "min": 28.00, "p10": 28.00, "median": 28.00, "last": 28.00},
                       "regular": {"n": 0, "median": None, "span_days": 0}},
         },
-        # par 4.80/kg vs a regular median of 4.90/kg -> a 2% gap, well inside
-        # PAR_REVIEW_MIN_GAP. This sku exists to make that threshold load-bearing in the
-        # test: without it, deleting the threshold check entirely still passed.
         "food.pork_meat": {
             "unit": "kg", "class": "consumable", "promo": [],
-            "regular": [_obs(d, 4.90, "corroborate") for (d,) in _D],
-            "stats": {"promo": {"n": 0, "min": None, "p10": None, "median": None, "last": None},
-                      "regular": {"n": 4, "median": 4.90, "span_days": 45}},
+            "regular": [_obs(d, pr, "lidl_regular") for (d,), pr in zip(_D, _TIGHT_PORK)],
+            "stats": {"promo": _NONE_P,
+                      "regular": {"n": 4, "median": 4.95, "span_days": 45}},
         },
     }}, f)
 
@@ -115,7 +142,10 @@ REPORTS = [
 ]
 
 REGULAR_ROWS = [
-    {"name": "Сьомга филе 1 кг", "product_code": "12345", "price_eur": 11.50, "category": "Месо и риба"},
+    # net_qty 0.5 deliberately CONTRADICTS the "1 кг" in the name: the statutory
+    # declaration must win, so the recorded shelf price is €23.00/kg and not €11.50/kg.
+    {"name": "Сьомга филе 1 кг", "product_code": "12345", "price_eur": 11.50,
+     "category": "Месо и риба", "net_qty": 0.5},
 ]
 
 
@@ -232,15 +262,17 @@ try:
         assert badge in run_md, f"verdict badge {badge!r} missing from run.md"
     print("All three verdict badges rendered [OK]")
 
-    # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, par=12.00.
+    # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00.
     assert "buy 5 kg = €49.00, saves €11.00" in html_body, \
         "exact consumable bulk-buy string missing"
     print("Exact consumable bulk-buy string rendered [OK]")
 
-    # Reject footer carries a real EUR/kg-vs-par number (chicken breast, over_par).
-    assert "over_par: €9.00/kg vs €6.00/kg par" in html_body, \
-        "reject footer missing the real EUR/kg-vs-par number"
-    print("Reject footer carries a real EUR/kg-vs-par number [OK]")
+    # Reject footer carries the real EUR/kg-vs-shelf number (chicken breast).
+    # €5.80 is p25 of the seeded [5.80, 6.00, 6.20, 6.40] series — the number the
+    # rejection was ACTUALLY measured against, spelled out so the footer cannot drift
+    # into printing a plausible-looking different one.
+    assert "over_reference: €9.00/kg vs €5.80/kg observed shelf price" in html_body, \
+    print("Reject footer carries a real EUR/kg-vs-shelf-price number [OK]")
 
     # Source report includes the FAILED mydealz source.
     assert "mydealz" in html_body and "FAILED" in html_body, "FAILED source report missing"
@@ -290,6 +322,52 @@ try:
     assert "lidl" in promo_sources, "the lidl promo row should still be in the promo series"
     print("Lidl regular row recorded distinctly from the lidl promo row [OK]")
 
+    # The regular observation carries an IDENTITY. Without it two runs on one day
+    # double-record every shelf price and two genuinely different products are
+    # indistinguishable from one product seen twice — and `net_qty` must have reached
+    # match.annotate through find_deals, which is a seam nothing else exercises.
+    reg_obs = salmon["regular"][0]
+    assert reg_obs.get("product_code") == "12345", \
+        f"regular observation lost its product_code: {reg_obs}"
+    assert reg_obs.get("retailer") == "Lidl", f"regular observation lost its retailer: {reg_obs}"
+    assert reg_obs.get("name") == "Сьомга филе 1 кг", \
+        f"regular observation lost its name: {reg_obs}"
+    assert reg_obs.get("unit_price_eur") == 23.00, (
+        "the statutory net_qty (0.5) must beat the '1 кг' in the product name — "
+        f"expected 23.00/kg, got {reg_obs.get('unit_price_eur')}"
+    )
+    print("Lidl regular observation carries identity and uses the declared net_qty [OK]")
+
+    # The shelf legs and regular_median read the SAME series, so granting both would
+    # double-count one source into 2.0 — enough to clear MIN_EVIDENCE_STRONG on a single
+    # Lidl shelf history with no second opinion anywhere. The pair this replaced
+    # (user_par + regular_median) were genuinely independent; these are not.
+    #
+    # Called DIRECTLY rather than asserted over the ledger: no fixture above happens to
+    # produce a candidate that qualifies for both legs at once, so a ledger scan would
+    # pass for a version of _evidence_legs that double-counts freely.
+    _deep = {"regular": {"n": C.REGULAR_MIN_N + 4,
+                         "span_days": C.REGULAR_MIN_SPAN_DAYS + 10, "median": 6.0}}
+    _hist_deep = {"skus": {"food.chicken_breast": {"stats": _deep}}}
+    _cand = {"sku": "food.chicken_breast", "sku_class": "consumable"}
+    _cfg = catalog.CATALOG["food.chicken_breast"]
+
+    _bare = fd._evidence_legs(_cand, _hist_deep, _cfg, None)
+    assert "regular_median" in _bare, (
+        f"with no shelf reference, a deep regular series must still earn its leg: {_bare}")
+
+    for _level in (C.REF_OWN_SHELF, C.REF_CATEGORY_P25):
+        _legs = fd._evidence_legs(_cand, _hist_deep, _cfg, _level)
+        assert "regular_median" not in _legs, (
+            f"{_level} double-counted the regular series: {sorted(_legs)}")
+        assert C.ref_evidence(_legs) < C.MIN_EVIDENCE_STRONG, (
+            f"a lone Lidl shelf history must not clear the Strong bar by itself: "
+            f"{sorted(_legs)} = {C.ref_evidence(_legs)}")
+
+    # L3 grants no shelf leg at all, so the regular series keeps its own.
+    assert "regular_median" in fd._evidence_legs(_cand, _hist_deep, _cfg, C.REF_LLM)
+    print("A shelf evidence leg and regular_median are never granted together [OK]")
+
     # deals_history.json: exactly the emailed set.
     n_strong = html_body.count(C.VERDICT_LABEL[C.VERDICT_STRONG])
     deals_hist = json.load(open("state/deals_history.json", encoding="utf-8"))
@@ -335,22 +413,42 @@ try:
     assert last_run.get("failed_gates"), "failed_gates histogram must not be empty"
     print("last_run.json failed_gates histogram non-empty [OK]")
 
-    # Par review block: the visible half of effective_par's clamp. A par 33% away from the
-    # observed REGULAR median must be reported to the human...
-    assert "Par review" in html_body, "Par review block missing from the digest"
-    assert re.search(r"house\.laundry_gel: your par is €4\.50/L, but the regular price has been "
-                     r"€6\.00/L .*33% above your par", html_body), \
-        "par-review line missing or malformed for the seeded regular-series gap"
-    assert "Par review" in text_body and "house.laundry_gel: your par is" in text_body, \
-        "par-review line missing from the text part"
-    # ...but a gap measured against PROMO prices is just the discount, and must NOT appear.
+    # Catalog maintenance block: the visible half of the wide-spread Fair ceiling.
+    # verdict_consumable handles a wide-spread sku SAFELY (it caps at Fair) and therefore
+    # SILENTLY — nothing errors while the sku quietly never reaches Strong Buy again. The
+    # block is what turns that into a finite, visible to-do list.
+    assert "Catalog maintenance" in html_body, "maintenance block missing from the digest"
+    assert re.search(r"house\.laundry_gel: shelf prices run €2\.00–€12\.00/L "
+                     r"\(6\.0x spread, n=4\)", html_body), \
+        "maintenance line missing or malformed for the seeded wide-spread sku"
+    assert "Catalog maintenance" in text_body and "house.laundry_gel: shelf prices run" in text_body, \
+        "maintenance line missing from the text part"
+
+    # A PROMO-only series must never produce a reference or a maintenance line. Every
+    # source here is a promotions feed by construction, so a reference blended from them
+    # walks downhill every week until the digest goes silently empty.
     assert "food.coffee_beans" not in html_body, \
-        "par review must read the regular series only — a promo-priced gap leaked in"
-    # ...and a par that is merely 2% off is not news; reporting it would train the user to
-    # ignore the block. This is what keeps PAR_REVIEW_MIN_GAP load-bearing.
-    assert "food.pork_meat" not in html_body, \
-        "par review fired on a sub-threshold gap — PAR_REVIEW_MIN_GAP is not being applied"
-    print("Par review reports a regular-series gap, ignores promo gaps and sub-threshold gaps [OK]")
+        "maintenance must read the regular series only — a promo-priced spread leaked in"
+
+    # ...and a tight series is not news. Reporting it would train the user to ignore the
+    # block, which is what keeps BASELINE_MAX_SPREAD load-bearing here.
+    assert "food.pork_meat: shelf prices run" not in html_body, \
+        "maintenance fired on a tight spread — BASELINE_MAX_SPREAD is not being applied"
+    print("Catalog maintenance reports a wide spread, ignores promo and tight series [OK]")
+
+    # Every emailed consumable says WHICH reference produced its verdict. A discount with
+    # no visible denominator is exactly the unauditable claim this rewrite removes.
+    labels = [v for v in fd.REFERENCE_LABEL.values() if v in html_body]
+    assert labels, ("no reference level rendered in the digest — a discount with no "
+                    "visible denominator is the unauditable claim this rewrite removes")
+    # Salmon has no seeded shelf series, so it must land on L3 and SAY SO, including its
+    # Fair cap. If it silently used the audit's number as though it were an observed
+    # shelf price, this is the assertion that notices.
+    assert "an estimated reference" in html_body, \
+        f"expected the L3 label for a sku with no shelf history; got {labels}"
+    assert "capped at Fair" in html_body, \
+        "an L3 reference must announce its Fair ceiling, not just its number"
+    print(f"Digest names the reference level behind each consumable verdict {labels} [OK]")
 
     print("\nAll assertions passed.")
 finally:

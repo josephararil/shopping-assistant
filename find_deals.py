@@ -73,16 +73,28 @@ def _match_by_lead_id(items, lead_id):
 def _record_lidl_regulars(hist, regular_rows):
     """For every Lidl regular_row that matches a catalog sku, record its unit price
     into the `regular` series. This fails SILENTLY if forgotten — the evidence leg
-    just stays absent — which is exactly why it is asserted in test_stub.py."""
+    just stays absent — which is exactly why it is asserted in test_stub.py.
+
+    `net_qty` is threaded through so annotate can use the statutory declaration rather
+    than parsing the product title, and `product_code` so the observation carries an
+    identity — without it two runs on one day double-record every shelf price and two
+    genuinely different rices are indistinguishable from one rice seen twice."""
     n = 0
     for row in regular_rows or []:
-        synth = {"name": row.get("name"), "price_eur": row.get("price_eur")}
+        synth = {
+            "name": row.get("name"),
+            "price_eur": row.get("price_eur"),
+            "net_qty": row.get("net_qty"),
+        }
         match.annotate(synth)
         sku = synth.get("sku")
         unit_price = synth.get("unit_price_eur")
         if not sku or sku not in catalog.CATALOG or unit_price is None:
             continue
-        if history.record_regular(hist, sku, unit_price, source="lidl_regular"):
+        if history.record_regular(
+            hist, sku, unit_price, source="lidl_regular",
+            retailer="Lidl", product_code=row.get("product_code"), name=row.get("name"),
+        ):
             n += 1
     return n
 
@@ -105,7 +117,7 @@ def _gap_skus_text(matched_skus):
     if not items:
         return "(none — every consumable matched a deterministic feed this run)"
     return "\n".join(
-        f"{sku} — {cfg.get('label', '')} (target €{cfg.get('par_eur')}/{cfg.get('unit')})"
+        f"{sku} — {cfg.get('label', '')} (unit: {cfg.get('unit')})"
         for sku, cfg in items
     )
 
@@ -169,7 +181,7 @@ def _audit_lead_payload(c):
         "pending_qty": c.get("pending_qty"),
         "valid_until": c.get("valid_until"),
         "url": c.get("url"),
-        "par_eur": sku_cfg.get("par_eur"),
+        "target_eur": sku_cfg.get("target_eur"),
         "trigger_eur": sku_cfg.get("trigger_eur"),
     }
 
@@ -237,19 +249,33 @@ def _apply_corroboration(cand, v, hist):
 
 # ── Stage 6: VERDICT ─────────────────────────────────────────────────────────
 
-def _evidence_legs(cand, hist, sku_cfg):
+def _evidence_legs(cand, hist, sku_cfg, ref_level=None):
     legs = set()
-    if sku_cfg.get("par_eur"):
-        legs.add("user_par")
+    # The reference level IS the evidence for a consumable. A statutory shelf price is
+    # far stronger than the hand-set par this replaced, which is what keeps consumables
+    # clearing MIN_EVIDENCE_FAIR without needing Stage-5 corroboration every week.
+    # L3 (llm_reference) grants NO leg — an LLM-supplied number is never the authority.
+    if ref_level == C.REF_OWN_SHELF:
+        legs.add("own_shelf")
+    elif ref_level == C.REF_CATEGORY_P25:
+        legs.add("statutory_shelf")
     if cand.get("was_price_eur"):
         legs.add("retailer_claim")
     if cand.get("source") == "ccc" and cand.get("was_price_eur"):
         legs.add("ccc_was")
     if (cand.get("heat") or 0) >= C.MYDEALZ_HOT_DEGREES:
         legs.add("mydealz_hot")
-    rstats = (history.stats_for(hist, cand.get("sku")).get("regular") or {})
-    if (rstats.get("n") or 0) >= C.REGULAR_MIN_N and (rstats.get("span_days") or 0) >= C.REGULAR_MIN_SPAN_DAYS:
-        legs.add("regular_median")
+    # regular_median and the shelf legs are computed from the SAME `regular` series, so
+    # granting both double-counts one source: 1.0 + 1.0 = 2.0 clears MIN_EVIDENCE_STRONG
+    # outright, and a single Lidl shelf history would be sufficient evidence all by
+    # itself. The pair this replaced (user_par + regular_median) really were independent
+    # — one was the catalog, the other was observation — so the sum was honest there and
+    # is not here. Mutually exclusive, shelf leg wins: it is the more specific claim.
+    if not legs & {"own_shelf", "statutory_shelf"}:
+        rstats = (history.stats_for(hist, cand.get("sku")).get("regular") or {})
+        if ((rstats.get("n") or 0) >= C.REGULAR_MIN_N
+                and (rstats.get("span_days") or 0) >= C.REGULAR_MIN_SPAN_DAYS):
+            legs.add("regular_median")
     if cand.get("corroborated"):
         legs.add("corroborated")
     if cand.get("trap_detected") in ("inflated_was_price", "recurring_evergreen_promo"):
@@ -260,19 +286,31 @@ def _evidence_legs(cand, hist, sku_cfg):
 def _score(cand, hist):
     sku = cand.get("sku")
     sku_cfg = catalog.CATALOG.get(sku) or {}
-    legs = _evidence_legs(cand, hist, sku_cfg)
+    is_consumable = cand.get("sku_class") == "consumable"
+
+    # The reference is resolved BEFORE the evidence legs, because which level we landed
+    # on is itself the strongest evidence a consumable has.
+    if is_consumable:
+        baseline = history.baseline_stats(hist, sku)
+        reference, ref_level, ref_conf = C.reference_for(cand, baseline)
+        cand["reference_eur"] = reference
+        cand["reference_level"] = ref_level
+        cand["reference_confidence"] = ref_conf
+        cand["baseline_n"] = baseline.get("n")
+        cand["baseline_spread"] = baseline.get("spread")
+    else:
+        reference = ref_level = ref_conf = None
+
+    legs = _evidence_legs(cand, hist, sku_cfg, ref_level)
     evidence = C.ref_evidence(legs)
     cand["evidence_legs"] = sorted(legs)
     cand["evidence"] = evidence
 
-    if cand.get("sku_class") == "consumable":
-        stats = history.stats_for(hist, sku)
-        par, drift = C.effective_par(sku_cfg, stats)
-        floor = C.promo_floor(stats)
+    if is_consumable:
+        floor = C.promo_floor(history.stats_for(hist, sku))
         verdict, discount, failed = C.verdict_consumable(
-            cand.get("unit_price_eur"), par, floor, cand.get("fit_score"), evidence)
-        cand["par_eur"] = par
-        cand["par_drift"] = drift
+            cand.get("unit_price_eur"), reference, ref_conf, floor,
+            cand.get("fit_score"), evidence, sku_cfg.get("target_eur"))
         cand["bulk_qty"] = sku_cfg.get("bulk_qty")
     else:
         verdict, discount, failed = C.verdict_durable(
@@ -391,7 +429,13 @@ ITEM_DATA_FIELDS = [
     ("unit_price_eur", lambda c, cfg: c.get("unit_price_eur")),
     ("price_eur", lambda c, cfg: c.get("price_eur")),
     ("bulk_total_eur", lambda c, cfg: _bulk_total(c, cfg)),
-    ("par_eur", lambda c, cfg: c.get("par_eur")),
+    # Which reference produced this verdict, and how much we trust it. Rendered in both
+    # the email and web/ so every verdict is auditable — a discount is meaningless
+    # without the number it was measured against.
+    ("reference_eur", lambda c, cfg: c.get("reference_eur")),
+    ("reference_level", lambda c, cfg: c.get("reference_level")),
+    ("reference_confidence", lambda c, cfg: c.get("reference_confidence")),
+    ("target_eur", lambda c, cfg: cfg.get("target_eur")),
     ("trigger_eur", lambda c, cfg: cfg.get("trigger_eur")),
     ("reference_price_eur", lambda c, cfg: c.get("reference_price_eur")),
     ("discount", lambda c, cfg: c.get("discount")),
@@ -400,6 +444,23 @@ ITEM_DATA_FIELDS = [
     ("evidence", lambda c, cfg: c.get("evidence")),
     ("valid_until", lambda c, cfg: c.get("valid_until")),
 ]
+
+
+# How each reference level reads to a human. The email must say WHICH number a discount
+# was measured against — "30% off" against a guessed par and against a statutory shelf
+# price are not the same claim, and the whole point of this rewrite is that the user can
+# tell them apart.
+REFERENCE_LABEL = {
+    C.REF_OWN_SHELF:    "its own Lidl shelf price",
+    C.REF_CATEGORY_P25: "the Lidl shelf p25",
+    C.REF_LLM:          "an estimated reference",
+}
+REFERENCE_CAVEAT = {
+    C.REF_CATEGORY_P25: "capped at Fair — this sku mixes product grades, so its p25 is "
+                        "not like-for-like",
+    C.REF_LLM:          "capped at Fair — no shelf price observed yet, so this reference "
+                        "is an LLM estimate",
+}
 
 
 def _bulk_total(c, sku_cfg):
@@ -415,17 +476,25 @@ def _consumable_line(c):
     sku_cfg = catalog.CATALOG.get(c.get("sku")) or {}
     name = c.get("name") or sku_cfg.get("label") or c.get("sku") or "?"
     unit = c.get("unit") or sku_cfg.get("unit") or "kg"
-    unit_price, par, discount = c.get("unit_price_eur"), c.get("par_eur"), c.get("discount")
+    unit_price, discount = c.get("unit_price_eur"), c.get("discount")
+    ref, level = c.get("reference_eur"), c.get("reference_level")
     bulk_qty, saving = sku_cfg.get("bulk_qty"), c.get("saving_eur")
 
-    if unit_price is not None and par is not None:
+    if unit_price is not None and ref is not None:
         pct = f"{round(discount * 100)}% under" if discount is not None else "?"
-        head = f"{name} — €{unit_price:.2f}/{unit} vs €{par:.2f} par ({pct})"
+        head = (f"{name} — €{unit_price:.2f}/{unit} vs €{ref:.2f} "
+                f"{REFERENCE_LABEL.get(level, 'reference')} ({pct})")
     elif unit_price is not None:
         head = f"{name} — €{unit_price:.2f}/{unit}"
     else:
         head = f"{name} — €?/{unit}"
     parts = [head]
+    # A low-confidence reference caps the verdict at Fair, so say so rather than
+    # letting the number look more authoritative than it is.
+    if c.get("reference_confidence") == C.CONF_LOW:
+        parts.append(REFERENCE_CAVEAT.get(level, "low-confidence reference"))
+    if sku_cfg.get("target_eur") and unit_price is not None and unit_price <= sku_cfg["target_eur"]:
+        parts.append(f"beats your €{sku_cfg['target_eur']:.2f}/{unit} target")
     if bulk_qty and unit_price is not None and saving is not None:
         parts.append(f"buy {bulk_qty:g} {unit} = €{unit_price * bulk_qty:.2f}, saves €{saving:.2f}")
     if sku_cfg.get("bulk_note"):
@@ -526,50 +595,49 @@ def _reject_footer_lines(rejects):
     for o in rejects:
         reason = o.get("reject_reason")
         name = o.get("name") or o.get("sku") or "?"
-        if reason == "over_par" and o.get("sku_class") == "consumable":
+        if reason == "over_reference" and o.get("sku_class") == "consumable":
             sku_cfg = catalog.CATALOG.get(o.get("sku")) or {}
-            par, up = sku_cfg.get("par_eur"), o.get("unit_price_eur")
+            ref, up = o.get("reference_eur"), o.get("unit_price_eur")
             unit = o.get("unit") or sku_cfg.get("unit") or "kg"
-            if up is not None and par is not None:
-                lines.append(f"{name} — over_par: €{up:.2f}/{unit} vs €{par:.2f}/{unit} par")
+            if up is not None and ref is not None:
+                lines.append(f"{name} — over_reference: €{up:.2f}/{unit} vs "
+                             f"€{ref:.2f}/{unit} observed shelf price")
                 continue
         lines.append(f"{name} — {reason}")
     return lines
 
 
-def par_review_lines(hist):
-    """-> list[str]. Skus whose observed REGULAR median sits far from the user's par.
+def maintenance_lines(hist):
+    """-> list[str]. Skus whose shelf-price spread is too wide for their p25 to mean
+    anything — the "split this sku" to-do list.
 
-    This is the visible half of `C.effective_par`, and it exists because that function
-    deliberately CLAMPS drift to PAR_DRIFT_MAX. A par set 40% away from what the shops
-    genuinely charge is clamped to 15% and then quietly used forever: the verdicts stay
-    self-consistent, nothing errors, and the user never learns their number is wrong.
-    Correcting a par is a human decision (CLAUDE.md), so the pipeline reports the gap
-    and changes nothing. During weeks 1-4 this is the highest-value line in the email.
+    This is the visible half of the L2 reference, and it is the direct successor to the
+    par-review block. The reasoning is the same shape: `verdict_consumable` handles a
+    wide-spread sku SAFELY (it caps at Fair) and therefore SILENTLY. `food.pasta` mixing
+    €1.98 durum with €47.67 boutique is not a market fact, it is a catalog problem, and
+    nothing errors while it persists — the sku just quietly never reaches Strong Buy.
 
-    Reads the regular series ONLY — a gap measured against promo prices would just be
-    the discount, and would tell the user to chase their par downhill every week.
-    """
+    Splitting a sku is a human decision, so this reports and changes nothing. Measured
+    2026-07-31: 18 of 27 observed skus are over the threshold, which is a finite,
+    shrinking to-do list rather than an unbounded warning stream.
+
+    Reads the WINDOWED regular series only — the same series the reference reads, so the
+    line always describes the number the verdicts actually used."""
     lines = []
     for sku, cfg in sorted(catalog.CATALOG.items()):
-        par = cfg.get("par_eur")
-        if not isinstance(par, (int, float)) or par <= 0:
-            continue  # no hand-set par -> nothing to review against
-        reg = (history.stats_for(hist, sku).get("regular") or {})
-        median = reg.get("median")
-        if (not isinstance(median, (int, float)) or median <= 0
-                or (reg.get("n") or 0) < C.REGULAR_MIN_N
-                or (reg.get("span_days") or 0) < C.REGULAR_MIN_SPAN_DAYS):
-            continue  # not enough non-promo evidence to make a claim
-        gap = median / par - 1
-        if abs(gap) < C.PAR_REVIEW_MIN_GAP:
+        if cfg.get("class") != "consumable":
+            continue
+        b = history.baseline_stats(hist, sku)
+        spread = b.get("spread")
+        if (b.get("n") or 0) < C.REGULAR_MIN_N or not isinstance(spread, (int, float)):
+            continue
+        if spread <= C.BASELINE_MAX_SPREAD:
             continue
         unit = cfg.get("unit") or "kg"
-        direction = "above" if gap > 0 else "below"
         lines.append(
-            f"{sku}: your par is €{par:.2f}/{unit}, but the regular price has been "
-            f"€{median:.2f}/{unit} (n={reg['n']} over {reg['span_days']}d) — "
-            f"{abs(gap) * 100:.0f}% {direction} your par. Consider updating par_eur."
+            f"{sku}: shelf prices run €{b['p10']:.2f}–€{b['p90']:.2f}/{unit} "
+            f"({spread:.1f}x spread, n={b['n']}), so its €{b['p25']:.2f}/{unit} p25 is "
+            f"not like-for-like — capped at Fair until the sku is split."
         )
     return lines
 
@@ -603,7 +671,7 @@ _CAVEATS_TEXT = (
 )
 
 
-def build_email_html(subject, top5, emailable, rejects, reports, stale, today, par_reviews=()):
+def build_email_html(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
     on_list_items = [c for c in emailable if c.get("on_list", True)]
     offlist_items = [c for c in emailable if not c.get("on_list", True)][:C.MAX_OFFLIST_LINES]
 
@@ -628,10 +696,10 @@ def build_email_html(subject, top5, emailable, rejects, reports, stale, today, p
         f"<div style='font-size:12px;color:#a15c00'>{_esc(s)}: no match in {C.CATALOG_STALE_RUNS}+ runs</div>"
         for s in stale
     )
-    par_html = "".join(
-        f"<div style='font-size:12px;color:#a15c00'>{_esc(l)}</div>" for l in par_reviews
+    maint_html = "".join(
+        f"<div style='font-size:12px;color:#a15c00'>{_esc(l)}</div>" for l in maintenance
     )
-    par_block = f"<h3>Par review</h3>{par_html}" if par_html else ""
+    maint_block = f"<h3>Catalog maintenance</h3>{maint_html}" if maint_html else ""
 
     return (
         f"<div style='font-family:system-ui,sans-serif;max-width:640px;padding:8px'>"
@@ -642,13 +710,13 @@ def build_email_html(subject, top5, emailable, rejects, reports, stale, today, p
         f"<h3>Also seen &amp; rejected ({len(rejects)} total)</h3>{reject_html}"
         f"<h3>Source report</h3>{report_html}"
         f"<h3>Catalog health</h3>{health_html}"
-        f"{par_block}"
+        f"{maint_block}"
         f"{_CAVEATS_HTML}"
         f"</div>"
     )
 
 
-def build_email_text(subject, top5, emailable, rejects, reports, stale, today, par_reviews=()):
+def build_email_text(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
     on_list_items = [c for c in emailable if c.get("on_list", True)]
     offlist_items = [c for c in emailable if not c.get("on_list", True)][:C.MAX_OFFLIST_LINES]
 
@@ -674,9 +742,9 @@ def build_email_text(subject, top5, emailable, rejects, reports, stale, today, p
     for s in stale:
         parts.append(f"{s}: no match in {C.CATALOG_STALE_RUNS}+ runs")
 
-    if par_reviews:
-        parts.append("\nPar review:")
-        parts += list(par_reviews)
+    if maintenance:
+        parts.append("\nCatalog maintenance:")
+        parts += list(maintenance)
 
     parts.append("\n" + _CAVEATS_TEXT)
     return "\n".join(parts)
@@ -732,8 +800,8 @@ def main():
     print(f"  {n_reg} Lidl regular-price row(s) recorded into the regular series")
 
     _section("STAGE 2 · PREFILTER")
-    par_stats = {sku: history.stats_for(hist, sku) for sku in catalog.CATALOG}
-    stage2_candidates, stage2_rejects, stage2_stats = prefilter.prefilter(offers, today, par_stats)
+    baselines = {sku: history.baseline_stats(hist, sku) for sku in catalog.CATALOG}
+    stage2_candidates, stage2_rejects, stage2_stats = prefilter.prefilter(offers, today, baselines)
     print(f"  {stage2_stats['n_out']} kept of {stage2_stats['n_in']}; "
           f"rejects_by_reason={stage2_stats['rejects_by_reason']}")
 
@@ -771,7 +839,7 @@ def main():
           f"(known sku + positive price)")
 
     discover_candidates, discover_rejects, discover_stats = prefilter.prefilter(
-        discover_offers, today, par_stats)
+        discover_offers, today, baselines)
     print(f"  prefilter: {discover_stats['n_out']} kept of {discover_stats['n_in']}")
 
     all_candidates = stage2_candidates + discover_candidates
@@ -882,18 +950,18 @@ def main():
 
     # Computed AFTER the Stage 5 record_regular calls above, so a par gap that
     # corroboration just proved shows up in this week's email rather than next week's.
-    par_reviews = par_review_lines(hist)
-    if par_reviews:
-        print(f"  {len(par_reviews)} par(s) look wrong — see the digest's Par review block")
+    maintenance = maintenance_lines(hist)
+    if maintenance:
+        print(f"  {len(maintenance)} sku(s) mix product grades — see the digest's Maintenance block")
 
     sent_items = []
     if n_strong + n_fair >= C.MIN_ITEMS_TO_EMAIL:
         subject = f"Weekly Shopping Hunt — {n_strong} Strong Buy · {n_fair} Fair · {today}"
         top5 = _top5(emailable)
         html_body = build_email_html(subject, top5, emailable, stage2_rejects + discover_rejects,
-                                      reports, stale, today, par_reviews)
+                                      reports, stale, today, maintenance)
         text_body = build_email_text(subject, top5, emailable, stage2_rejects + discover_rejects,
-                                      reports, stale, today, par_reviews)
+                                      reports, stale, today, maintenance)
         if C.DRY_RUN:
             print(f"  [DRY RUN] would send: {subject}")
         else:

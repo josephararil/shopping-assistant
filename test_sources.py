@@ -525,6 +525,93 @@ chk("first-file promo offers still have valid_until is None (unchanged)",
     all(o["valid_until"] is None for o in lidl_promo))
 
 
+# ── net quantity: present in the second schema, ABSENT from the first ───────
+# `Нетно количество` is the manufacturer's statutory net-quantity declaration. It makes
+# every €/kg deterministic instead of a guess at what a product title means — but ONLY
+# the second file's schema carries it. The first file's header row has no such column,
+# which is why it is resolved with header_map.get() and never _resolve_lidl_col: a file
+# that legitimately has no net quantity must degrade to name parsing, not fail outright.
+chk("second-schema regular rows all carry a net_qty",
+    all(isinstance(r["net_qty"], float) and r["net_qty"] > 0 for r in lidl2_regular),
+    [r for r in lidl2_regular if not isinstance(r.get("net_qty"), float)][:3])
+chk("second-schema promo offers all carry a net_qty",
+    all(isinstance(o["net_qty"], float) and o["net_qty"] > 0 for o in lidl2_promo),
+    [o["name"] for o in lidl2_promo if not isinstance(o.get("net_qty"), float)][:3])
+
+chk("FIRST-schema rows carry net_qty=None — the column does not exist there",
+    all(r["net_qty"] is None for r in lidl_regular)
+    and all(o["net_qty"] is None for o in lidl_promo))
+chk("a missing net-quantity column does not fail the source",
+    len(lidl_regular) == 226 and len(lidl_promo) == 26)
+
+# THE 10x BUG, settled with authority. "Боб насипен 200-220/100 г" is a calibre grading
+# (200-220 beans per 100 g) on a product sold loose by the kilo. The name parse read it
+# as a 100 g pack and produced €16.90/kg from a €1.69/kg bag. The export declares 1.0.
+lidl2_regular_by_name = {r["name"]: r for r in lidl2_regular}
+_beans = lidl2_regular_by_name.get("Боб насипен 200-220/100 г")
+chk("net_qty reads the beans row as 1.0, not the 0.1 the name implies",
+    _beans is not None and _beans["net_qty"] == 1.0, _beans)
+
+# The other settled ambiguity: a name with no quantity in it at all. The audit guessed
+# 0.4 one run and 0.5 the next for the same kashkaval — a 25% swing in the number that
+# drives every gate. The export says 1.0, so BOTH guesses were wrong; asserted by
+# product code, because ten different kashkavals share near-identical prose names and
+# declare anything from 0.35 to 1.0.
+_kash = lidl2_regular_by_name.get("Кашкавал от краве мляко")
+chk("net_qty settles the kashkaval the audit kept guessing at: 1.0, not 0.4 or 0.5",
+    _kash is not None and _kash["product_code"] == "0001182" and _kash["net_qty"] == 1.0,
+    _kash)
+chk("ten near-identically named kashkavals declare distinct net quantities",
+    len({r["net_qty"] for r in lidl2_regular if "ашкавал" in r["name"]}) >= 4,
+    sorted({r["net_qty"] for r in lidl2_regular if "ашкавал" in r["name"]}))
+
+# _parse_net_qty itself: a bare unitless decimal, both separators DECIMAL. It must not
+# be _parse_de_amount (which treats "." as thousands and reads "1.00000" as 100000) and
+# must reject non-positive values rather than let a price be divided by ~zero.
+for raw, expected in (("1.00000", 1.0), ("0,40000", 0.4), ("0.23500", 0.235),
+                      ("  0.9170 ", 0.917), ("", None), ("   ", None), ("abc", None),
+                      ("0", None), ("0.00000", None), ("-1.5", None)):
+    chk(f"_parse_net_qty({raw!r}) -> {expected!r}",
+        sources._parse_net_qty(raw) == expected, sources._parse_net_qty(raw))
+chk("_parse_net_qty('1.00000') is 1.0, NOT 100000 — dot is a decimal here",
+    sources._parse_net_qty("1.00000") == 1.0)
+
+
+# ── fetch_lidl's MERGE must not throw the net quantity away ─────────────────
+# The two export files list the SAME products under the SAME product codes at IDENTICAL
+# prices, and only the second declares a net quantity. De-duping on price alone keeps
+# whichever row was seen first — the first file's, with net_qty=None — so in production
+# 0 of 700 rows carried a net quantity while every single-file test above passed. This
+# is the seam no test of one file can see, which is why it is tested through fetch_lidl
+# with BOTH fixtures rather than through parse_lidl.
+_saved_fetch_bytes = sources._fetch_bytes
+_fixture_by_url = dict(zip(C.LIDL_EXPORT_URLS, (LIDL_FIXTURE, LIDL_FIXTURE_SECOND)))
+sources._fetch_bytes = lambda url, timeout=25: _fixture_by_url[url]
+try:
+    merged_promo_rows, merged_regular_rows, merged_report = sources.fetch_lidl()
+finally:
+    sources._fetch_bytes = _saved_fetch_bytes
+
+chk("fetch_lidl merges both fixture schemas", merged_report["ok"] is True, merged_report)
+_shared = ({r["product_code"] for r in lidl_regular}
+           & {r["product_code"] for r in lidl2_regular})
+chk("the two fixtures really do share product codes (else this test proves nothing)",
+    len(_shared) >= 50, len(_shared))
+_merged_by_code = {r["product_code"]: r for r in merged_regular_rows}
+_lost = [c for c in _shared if _merged_by_code.get(c, {}).get("net_qty") is None]
+chk("a shared product keeps the second file's net_qty after the merge",
+    _lost == [], f"{len(_lost)} shared codes lost their net_qty, e.g. {_lost[:3]}")
+
+# The backfill must not disturb the price rule it rides on: lowest still wins.
+_price_broken = [
+    c for c in _shared
+    if _merged_by_code[c]["price_eur"] != min(
+        r["price_eur"] for r in (lidl_regular + lidl2_regular) if r["product_code"] == c)
+]
+chk("the merge still keeps the LOWEST price per product code", _price_broken == [],
+    _price_broken[:3])
+
+
 # ── a blob whose header lacks a required column fails LOUDLY, not silently ──
 MISSING_COL_HEADER = (
     '<row r="1">'
