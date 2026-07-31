@@ -16,25 +16,10 @@ ONE public function: prefilter(offers, today, baselines=None) -> (candidates, re
 """
 
 import config as C
-import catalog
-import match
 
-# Eight reject reasons, first rule wins:
-#   expired, no_price, no_sku_match, over_reference, shallow_claim, tiny_ticket, dup, over_cap
-
-
-def _discovery_ok(offer):
-    """Off-list discovery eligibility (durables only). Consumable discovery is cut
-    entirely: with no par there is nothing to compute a unit price against."""
-    claimed = offer.get("claimed_discount")
-    price = offer.get("price_eur")
-    hint = (offer.get("category_hint") or "").lower()
-    return (
-        (claimed or 0) >= C.DISCOVERY_MIN_CLAIMED_DISCOUNT
-        and price is not None
-        and price >= C.DISCOVERY_MIN_PRICE_EUR
-        and catalog.CATEGORY_HINTS.get(hint) == "durable"
-    )
+# Six reject reasons, first rule wins:
+#   expired, no_price, no_sku_match, over_reference, dup, over_cap
+# test_prefilter.py asserts every reason this module emits is one of the six.
 
 
 def _reference_for(offer, baselines):
@@ -53,9 +38,8 @@ def _reference_for(offer, baselines):
 
 def _reject_reason(offer, today, baselines):
     """Per-offer reject rules, first rule wins. Mutates `offer` in place with the
-    sku/sku_class/match_conf/on_list fields the discovery path or a catalog match
-    establishes, so downstream ordering can read them. Returns the reason string,
-    or None if the offer survives this stage."""
+    `reference_eur` a catalog match establishes, so downstream ordering can read it.
+    Returns the reason string, or None if the offer survives this stage."""
     valid_until = offer.get("valid_until")
     if valid_until is not None and valid_until < today:
         return "expired"
@@ -66,64 +50,35 @@ def _reject_reason(offer, today, baselines):
 
     sku = offer.get("sku")
     if not sku:
-        if not _discovery_ok(offer):
-            return "no_sku_match"
-        sku = "disc." + match.slug(offer.get("name") or "")
-        offer["sku"] = sku
-        offer["sku_class"] = "durable"
-        offer["match_conf"] = "medium"
-        offer["on_list"] = False
-    else:
-        offer["on_list"] = True
+        return "no_sku_match"
 
-    sku_class = offer.get("sku_class")
-    if sku_class == "consumable":
+    # Every catalog sku is a consumable now, so this guard is defensive rather than a
+    # branch — kept rather than assumed, so a malformed sku_class cannot silently take
+    # the reference check with it.
+    if offer.get("sku_class") == "consumable":
         reference = _reference_for(offer, baselines)
         unit_price = offer.get("unit_price_eur")
         offer["reference_eur"] = reference
         if (reference and unit_price is not None
                 and unit_price > reference * C.PREFILTER_REFERENCE_SLACK):
             return "over_reference"
-    elif sku_class == "durable":
-        trigger_eur = (catalog.CATALOG.get(sku) or {}).get("trigger_eur")
-        trigger_hit = trigger_eur is not None and price <= trigger_eur
-        if not trigger_hit:
-            claimed = offer.get("claimed_discount")
-            if (claimed or 0) < C.DURABLE_MIN_CLAIMED_DISCOUNT:
-                return "shallow_claim"
-        if price < C.DURABLE_MIN_PRICE_EUR:
-            return "tiny_ticket"
 
     return None
 
 
 def _attractiveness(offer, baselines):
-    """Cap-fill ordering key, descending. mydealz heat earns a place here only —
-    never in a field the verdict stage could read as evidence."""
-    if offer.get("sku_class") == "consumable":
-        reference = _reference_for(offer, baselines)
-        unit_price = offer.get("unit_price_eur")
-        if not reference or unit_price is None:
-            return float("-inf")
-        return 1 - unit_price / reference
-
-    sku = offer.get("sku")
-    trigger_eur = (catalog.CATALOG.get(sku) or {}).get("trigger_eur")
-    price = offer.get("price_eur")
-    if trigger_eur is not None and price is not None and price <= trigger_eur:
-        return float("inf")  # a trigger hit sorts first, ahead of everything else
-    heat = offer.get("heat") or 0
-    claimed = offer.get("claimed_discount") or 0
-    return claimed * (1 + min(C.HEAT_ORDER_MAX, heat / C.HEAT_ORDER_DIVISOR))
+    """Cap-fill ordering key, descending: how far under the observed reference this
+    offer's unit price sits."""
+    reference = _reference_for(offer, baselines)
+    unit_price = offer.get("unit_price_eur")
+    if not reference or unit_price is None:
+        return float("-inf")
+    return 1 - unit_price / reference
 
 
 def _dedup_metric(offer):
-    """The number 'dup' dedupes on: unit price for consumables, ticket price for
-    durables (durables have no unit-price concept)."""
-    if offer.get("sku_class") == "consumable":
-        v = offer.get("unit_price_eur")
-    else:
-        v = offer.get("price_eur")
+    """The number 'dup' dedupes on: the unit price."""
+    v = offer.get("unit_price_eur")
     return v if v is not None else float("inf")
 
 

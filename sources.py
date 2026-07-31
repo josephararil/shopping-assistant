@@ -62,7 +62,7 @@ def _fetch_bytes(url, timeout=25):
 
 
 def _blank_offer(source, raw):
-    """The 11 contract keys, unknown = None (url = "")."""
+    """The 10 contract keys, unknown = None (url = "")."""
     return {
         "source": source,
         "retailer": None,
@@ -73,7 +73,6 @@ def _blank_offer(source, raw):
         "valid_until": None,
         "url": "",
         "heat": None,
-        "category_hint": None,
         "raw": raw,
     }
 
@@ -144,7 +143,6 @@ def parse_ccc(xml_text):
         offer["was_price_eur"] = was
         offer["claimed_discount"] = _claimed_discount(now, was)
         offer["retailer"] = _normalise_retailer("Amazon.de")
-        offer["category_hint"] = None
 
         link_el = item.find("link")
         offer["url"] = link_el.text.strip() if link_el is not None and link_el.text else ""
@@ -186,10 +184,6 @@ def parse_mydealz(xml_text):
         offer["was_price_eur"] = None  # mydealz carries no trustworthy "before" figure
         offer["claimed_discount"] = _claimed_discount(offer["price_eur"], offer["was_price_eur"])
         offer["retailer"] = _normalise_retailer(merchant_name) if merchant_name else "mydealz"
-
-        cat_el = item.find("category")
-        cat_text = (cat_el.text or "").strip().lower() if cat_el is not None and cat_el.text else ""
-        offer["category_hint"] = cat_text if cat_text in catalog.CATEGORY_HINTS else None
 
         link_el = item.find("link")
         offer["url"] = link_el.text.strip() if link_el is not None and link_el.text else ""
@@ -425,7 +419,6 @@ def parse_lidl(blob):
         offer["valid_until"] = valid_until
         offer["url"] = ""
         offer["heat"] = None
-        offer["category_hint"] = None
         promo_offers.append(offer)
 
     regular_rows = [

@@ -19,65 +19,9 @@ def chk(name, cond, detail=""):
         _fails.append(name)
 
 
-# ── Named regression 1: the trigger price wins outright (Sony XM5) ──────────
-sony = catalog.WISHLIST["av.sony_xm5"]
-trigger = sony["trigger_eur"]
-v, discount, failed = C.verdict_durable(
-    price_eur=179.0, trigger_eur=trigger, ref_eur=None,
-    evidence=None, fit_score=None, on_list=True,
-)
-chk("regression1: trigger hit -> Strong Buy", v == C.VERDICT_STRONG, f"got {v}")
-chk("regression1: no reference -> discount is None", discount is None, f"got {discount}")
-chk("regression1: no gates failed", failed == [], f"got {failed}")
-
-try:
-    score = C.rank_score(None, None, C.VERDICT_STRONG)
-    chk("regression1: rank_score(None, None, Strong) does not raise", True)
-except Exception as e:
-    chk("regression1: rank_score(None, None, Strong) does not raise", False, repr(e))
-
-
-# ── Named regression 2: the washing machine ──────────────────────────────────
-ev_retailer_only = C.ref_evidence(["retailer_claim"])
-v, discount, failed = C.verdict_durable(
-    price_eur=450.0, trigger_eur=None, ref_eur=500.0,
-    evidence=ev_retailer_only, fit_score=20, on_list=False,
-)
-chk("washing machine: Skip", v == C.VERDICT_SKIP, f"got {v}")
-for gate in ("discount", "fit", "evidence", "offlist_ceiling"):
-    chk(f"washing machine: '{gate}' in failed_gates", gate in failed, f"failed={failed}")
-
-# Same machine at 40% off, fit still 20: off-list needs discount>=DISCOUNT_OFFLIST,
-# evidence>=STRONG_OFFLIST AND fit>=FIT_OFFLIST. Give it generous evidence so only
-# discount/fit/ceiling are what block it, proving fit alone (a generic appliance
-# nobody needs) is enough to keep it out of Strong Buy.
-v2, discount2, failed2 = C.verdict_durable(
-    price_eur=300.0, trigger_eur=None, ref_eur=500.0,
-    evidence=C.MIN_EVIDENCE_STRONG_OFFLIST, fit_score=20, on_list=False,
-)
-chk("washing machine @40% off still not Strong Buy", v2 != C.VERDICT_STRONG, f"got {v2}")
-chk("washing machine @40% off: 'fit' in failed_gates", "fit" in failed2, f"failed={failed2}")
-
-
 # ── A single unverifiable "% off" must never be sufficient for Strong Buy ───
-ev_ccc_only = C.ref_evidence(["ccc_was"])
-v, discount, failed = C.verdict_durable(
-    price_eur=370.0, trigger_eur=None, ref_eur=1000.0,   # 63% off
-    evidence=ev_ccc_only, fit_score=90, on_list=True,
-)
-chk("ccc_was-only 63% off: not Strong Buy", v != C.VERDICT_STRONG, f"got {v}")
-
-ev_corroborated = C.ref_evidence(["corroborated", "regular_median"])
-chk("corroborated+regular_median evidence == 2.0", ev_corroborated == 2.0, f"got {ev_corroborated}")
-v, discount, failed = C.verdict_durable(
-    price_eur=370.0, trigger_eur=None, ref_eur=1000.0,   # same 63% off
-    evidence=ev_corroborated, fit_score=90, on_list=False,
-)
-chk("same lead off-list with evidence 2.0: not Strong Buy (needs 2.5 off-list)",
-    v != C.VERDICT_STRONG, f"got {v}")
-chk("same lead off-list: 'evidence' in failed_gates", "evidence" in failed, f"failed={failed}")
-
 ev_alone = C.ref_evidence(["retailer_claim"])
+ev_retailer_only = ev_alone  # same single-leg evidence, referenced again below
 chk("retailer_claim alone < MIN_EVIDENCE_STRONG", ev_alone < C.MIN_EVIDENCE_STRONG,
     f"{ev_alone} vs {C.MIN_EVIDENCE_STRONG}")
 for leg in C.EVIDENCE_WEIGHTS:
@@ -86,18 +30,6 @@ for leg in C.EVIDENCE_WEIGHTS:
     total = C.ref_evidence(["retailer_claim", leg])
     chk(f"retailer_claim + {leg} < MIN_EVIDENCE_STRONG", total < C.MIN_EVIDENCE_STRONG,
         f"{total} vs {C.MIN_EVIDENCE_STRONG}")
-
-
-# ── Off-list has a HARD Fair ceiling ─────────────────────────────────────────
-# Clears every numeric off-list gate: discount 0.60, saving 600 (>=40), evidence 3.0,
-# fit 95.
-v, discount, failed = C.verdict_durable(
-    price_eur=400.0, trigger_eur=None, ref_eur=1000.0,
-    evidence=3.0, fit_score=95, on_list=False,
-)
-chk("offlist ceiling: every numeric gate cleared, still not Strong Buy",
-    v != C.VERDICT_STRONG, f"got {v}")
-chk("offlist ceiling: 'offlist_ceiling' in failed_gates", "offlist_ceiling" in failed, f"failed={failed}")
 
 
 # ── Consumables: judged against an OBSERVED reference, not a hand-set par ────
@@ -157,8 +89,8 @@ chk("no reference at all: Skip with ['no_reference']",
 # ── A LOW-confidence reference can never reach Strong Buy ───────────────
 # Two cases share this ceiling: an L3 llm_reference (no LLM-supplied number is ever the
 # authority on price) and a wide-spread L2 whose p25 averages across product grades that
-# are not the same thing. It is enforced in CODE, not by a threshold, for the same reason
-# as OFFLIST_FAIR_CEILING: a tuning mistake must not be able to open the spam vector.
+# are not the same thing. It is enforced in CODE, not by a threshold, because a tuning
+# mistake must not be able to open a spam vector.
 v, discount, failed = C.verdict_consumable(7.20, REFERENCE, LOW, None, 92, ev_shelf_retailer)
 chk("40% under on a LOW-confidence reference: Fair, never Strong",
     v == C.VERDICT_FAIR, f"got {v}")
@@ -177,8 +109,8 @@ for price in (6.00, 3.00, 0.50):
 
 
 # ── target_eur is a PROMOTE-ONLY pre-commitment ──────────────────────
-# It mirrors a durable's trigger_eur: the user named the number themselves, so no
-# baseline inflation can fake it and no other gate applies. It is NEVER a denominator.
+# The user named the number themselves, so no baseline inflation can fake it and no
+# other gate applies. It is NEVER a denominator.
 v, discount, failed = C.verdict_consumable(22.50, 30.00, HIGH, 20.00, 10, 0.0,
                                            target_eur=25.00)
 chk("target_eur hit: Strong Buy despite failing floor, fit AND evidence",
@@ -249,18 +181,13 @@ for verdict_in in (C.VERDICT_STRONG, C.VERDICT_FAIR, C.VERDICT_SKIP):
             f"in={verdict_in} flag={flag} out={out}")
 
 
-# ── rank_score cross-class comparability ─────────────────────────────────────
-sony_discount = (349.0 - 179.0) / 349.0
-sony_saving = 349.0 - 179.0
-sony_score = C.rank_score(sony_discount, sony_saving, C.VERDICT_STRONG)
-
+# ── rank_score: monotonic in saving_eur ──────────────────────────────────────
 salmon_discount = 1 - 7.20 / 12.00
 salmon_saving = (12.00 - 7.20) * 5.0   # bulk_qty=5
 salmon_score = C.rank_score(salmon_discount, salmon_saving, C.VERDICT_STRONG)
-
-hi, lo = max(sony_score, salmon_score), min(sony_score, salmon_score)
-chk("rank_score: cross-class ratio < 10", lo > 0 and (hi / lo) < 10,
-    f"sony={sony_score} salmon={salmon_score}")
+salmon_score_bigger_saving = C.rank_score(salmon_discount, salmon_saving * 2, C.VERDICT_STRONG)
+chk("rank_score: monotonic in saving_eur", salmon_score_bigger_saving >= salmon_score,
+    f"salmon={salmon_score} bigger_saving={salmon_score_bigger_saving}")
 
 base_score = C.rank_score(0.5, 100.0, C.VERDICT_STRONG, is_repeat=False)
 repeat_score = C.rank_score(0.5, 100.0, C.VERDICT_STRONG, is_repeat=True)
@@ -293,14 +220,6 @@ cand_20pct_b = {"sku_class": "consumable", "unit_price_eur": 12.00}
 chk("price_bucket: 20% apart do NOT share a bucket",
     C.price_bucket(cand_20pct_a) != C.price_bucket(cand_20pct_b),
     f"{C.price_bucket(cand_20pct_a)} vs {C.price_bucket(cand_20pct_b)}")
-
-cand_class_swap = {"sku_class": "consumable", "unit_price_eur": 10.00, "price_eur": 50.00}
-bucket_as_consumable = C.price_bucket(cand_class_swap)
-cand_class_swap["sku_class"] = "durable"
-bucket_as_durable = C.price_bucket(cand_class_swap)
-chk("price_bucket: consumable uses unit_price_eur, durable uses price_eur (differ)",
-    bucket_as_consumable != bucket_as_durable,
-    f"consumable={bucket_as_consumable} durable={bucket_as_durable}")
 
 cand_retailer_a = {"sku": "food.salmon_fillet", "sku_class": "consumable",
                     "unit_price_eur": 10.00, "retailer": "Kaufland"}
@@ -393,16 +312,10 @@ chk("MIN_EVIDENCE_STRONG is still 2.0", C.MIN_EVIDENCE_STRONG == 2.0)
 # ── gates_prompt_text must not drift from the constants ─────────────────────
 text = C.gates_prompt_text()
 expect_consumable_pct = f">= {round(C.CONSUMABLE_STRONG_DISCOUNT * 100)}%"
-expect_durable_pct = f">= {round(C.DURABLE_STRONG_DISCOUNT * 100)}%"
-expect_abs_saving = f"EUR {C.DURABLE_MIN_ABS_SAVING_EUR} absolute saving"
 expect_evidence = f"{C.EVIDENCE_WEIGHTS['retailer_claim']} of the {C.MIN_EVIDENCE_STRONG} reference-credibility"
 
 chk("gates_prompt_text contains CONSUMABLE_STRONG_DISCOUNT", expect_consumable_pct in text,
     f"looked for {expect_consumable_pct!r}")
-chk("gates_prompt_text contains DURABLE_STRONG_DISCOUNT", expect_durable_pct in text,
-    f"looked for {expect_durable_pct!r}")
-chk("gates_prompt_text contains DURABLE_MIN_ABS_SAVING_EUR", expect_abs_saving in text,
-    f"looked for {expect_abs_saving!r}")
 chk("gates_prompt_text contains MIN_EVIDENCE_STRONG", expect_evidence in text,
     f"looked for {expect_evidence!r}")
 

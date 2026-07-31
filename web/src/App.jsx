@@ -241,7 +241,6 @@ export default function App() {
           <select value={skuClass} onChange={(e) => setSkuClass(e.target.value)} aria-label="Filter by class">
             <option value="all">All classes</option>
             <option value="consumable">Consumable</option>
-            <option value="durable">Durable</option>
           </select>
           <span className="select-caret">▾</span>
         </div>
@@ -369,25 +368,10 @@ function consumableLine(e) {
   return s;
 }
 
-// Durable saving line: "€179 (normal €349, 49% off, saves €170)"
-// or, with a trigger and no reference price: "€179 (trigger €200)"
-function durableLine(e) {
-  const price = fmtEur(e.price_eur);
-  if (!price) return null;
-  const bits = [];
-  if (e.reference_price_eur != null) bits.push(`normal €${fmtEur(e.reference_price_eur)}`);
-  const pct = fmtPct(e.discount);
-  if (pct) bits.push(`${pct} off`);
-  if (e.saving_eur != null) bits.push(`saves €${fmt2(e.saving_eur)}`);
-  if (e.trigger_eur != null) bits.push(`trigger €${fmtEur(e.trigger_eur)}`);
-  return `€${price}${bits.length ? ` (${bits.join(", ")})` : ""}`;
-}
-
 function DealCard({ entry: e, index, onOpen }) {
   const slug = verdictSlug(e.verdict);
   const title = e.label || e.name || "Unnamed product";
-  const isConsumable = e.sku_class === "consumable";
-  const line = isConsumable ? consumableLine(e) : durableLine(e);
+  const line = consumableLine(e);
   const blurb = e.value_case || e.about || "";
   return (
     <button
@@ -447,8 +431,7 @@ function Drawer({ entry: e, onClose }) {
   if (!e) return null;
   const slug = verdictSlug(e.verdict);
   const title = e.label || e.name || "Unnamed product";
-  const isConsumable = e.sku_class === "consumable";
-  const line = isConsumable ? consumableLine(e) : durableLine(e);
+  const line = consumableLine(e);
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -496,17 +479,13 @@ function Drawer({ entry: e, onClose }) {
         {/* A low-confidence reference caps the verdict at Fair. Say so, rather than
             letting a Fair card look like a merely-unexciting deal — the cap is a
             statement about OUR data, not about the offer. */}
-        {isConsumable && e.reference_confidence === "low" && (
+        {e.reference_confidence === "low" && (
           <div className="d-note">
             Capped at Fair —{" "}
             {e.reference_level === "llm_reference"
               ? "no Lidl shelf price observed for this item yet, so the reference is an estimate."
               : "this sku mixes product grades, so its shelf p25 is not like-for-like."}
           </div>
-        )}
-
-        {!isConsumable && e.trigger_eur != null && (
-          <div className="d-note">Trigger price: €{fmt2(e.trigger_eur)}</div>
         )}
 
         {e.bulk_advice && <div className="d-note"><b>Bulk advice:</b> {e.bulk_advice}</div>}

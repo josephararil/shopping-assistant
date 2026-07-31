@@ -11,8 +11,7 @@ Stage 6 · VERDICT          deterministic   config.py     Strong Buy / Fair / Sk
 Stage 7 · DIGEST + STATE   deterministic   email, price_history, ledger, seen, deals_history
 
 See CLAUDE.md for the invariants this file must hold — most importantly: the LLM never
-performs arithmetic, promo/regular series never mix, quarantine != skip, and off-list
-discovery can never exceed Fair.
+performs arithmetic, promo/regular series never mix, and quarantine != skip.
 
 Flags:
   --dry-run                   Stages 0-2 against the live web, exits before any LLM call.
@@ -137,7 +136,6 @@ def _offer_from_discover(o, sku, cfg):
         "valid_until": match.parse_valid_until(o.get("valid_until") or "") or (o.get("valid_until") or None),
         "url": o.get("url") or "",
         "heat": None,
-        "category_hint": None,
         "raw": o.get("evidence") or "",
         "sku": sku,
         "sku_class": cfg.get("class"),
@@ -172,7 +170,6 @@ def _audit_lead_payload(c):
         "source": c.get("source"),
         "sku": c.get("sku"),
         "sku_class": c.get("sku_class"),
-        "on_list": c.get("on_list"),
         "price_eur": c.get("price_eur"),
         "was_price_eur": c.get("was_price_eur"),
         "claimed_discount": c.get("claimed_discount"),
@@ -182,7 +179,6 @@ def _audit_lead_payload(c):
         "valid_until": c.get("valid_until"),
         "url": c.get("url"),
         "target_eur": sku_cfg.get("target_eur"),
-        "trigger_eur": sku_cfg.get("trigger_eur"),
     }
 
 
@@ -286,36 +282,27 @@ def _evidence_legs(cand, hist, sku_cfg, ref_level=None):
 def _score(cand, hist):
     sku = cand.get("sku")
     sku_cfg = catalog.CATALOG.get(sku) or {}
-    is_consumable = cand.get("sku_class") == "consumable"
 
     # The reference is resolved BEFORE the evidence legs, because which level we landed
     # on is itself the strongest evidence a consumable has.
-    if is_consumable:
-        baseline = history.baseline_stats(hist, sku)
-        reference, ref_level, ref_conf = C.reference_for(cand, baseline)
-        cand["reference_eur"] = reference
-        cand["reference_level"] = ref_level
-        cand["reference_confidence"] = ref_conf
-        cand["baseline_n"] = baseline.get("n")
-        cand["baseline_spread"] = baseline.get("spread")
-    else:
-        reference = ref_level = ref_conf = None
+    baseline = history.baseline_stats(hist, sku)
+    reference, ref_level, ref_conf = C.reference_for(cand, baseline)
+    cand["reference_eur"] = reference
+    cand["reference_level"] = ref_level
+    cand["reference_confidence"] = ref_conf
+    cand["baseline_n"] = baseline.get("n")
+    cand["baseline_spread"] = baseline.get("spread")
 
     legs = _evidence_legs(cand, hist, sku_cfg, ref_level)
     evidence = C.ref_evidence(legs)
     cand["evidence_legs"] = sorted(legs)
     cand["evidence"] = evidence
 
-    if is_consumable:
-        floor = C.promo_floor(history.stats_for(hist, sku))
-        verdict, discount, failed = C.verdict_consumable(
-            cand.get("unit_price_eur"), reference, ref_conf, floor,
-            cand.get("fit_score"), evidence, sku_cfg.get("target_eur"))
-        cand["bulk_qty"] = sku_cfg.get("bulk_qty")
-    else:
-        verdict, discount, failed = C.verdict_durable(
-            cand.get("price_eur"), sku_cfg.get("trigger_eur"), cand.get("reference_price_eur"),
-            evidence, cand.get("fit_score"), cand.get("on_list", True))
+    floor = C.promo_floor(history.stats_for(hist, sku))
+    verdict, discount, failed = C.verdict_consumable(
+        cand.get("unit_price_eur"), reference, ref_conf, floor,
+        cand.get("fit_score"), evidence, sku_cfg.get("target_eur"))
+    cand["bulk_qty"] = sku_cfg.get("bulk_qty")
 
     if cand.get("quality_flag") == "junk" and verdict == C.VERDICT_STRONG:
         verdict = C.VERDICT_SKIP
@@ -436,7 +423,6 @@ ITEM_DATA_FIELDS = [
     ("reference_level", lambda c, cfg: c.get("reference_level")),
     ("reference_confidence", lambda c, cfg: c.get("reference_confidence")),
     ("target_eur", lambda c, cfg: cfg.get("target_eur")),
-    ("trigger_eur", lambda c, cfg: cfg.get("trigger_eur")),
     ("reference_price_eur", lambda c, cfg: c.get("reference_price_eur")),
     ("discount", lambda c, cfg: c.get("discount")),
     ("saving_eur", lambda c, cfg: c.get("saving_eur")),
@@ -504,32 +490,8 @@ def _consumable_line(c):
     return " · ".join(parts)
 
 
-def _durable_line(c):
-    sku_cfg = catalog.CATALOG.get(c.get("sku")) or {}
-    name = c.get("name") or sku_cfg.get("label") or c.get("sku") or "?"
-    price, ref, discount, saving = c.get("price_eur"), c.get("reference_price_eur"), c.get("discount"), c.get("saving_eur")
-    trigger = sku_cfg.get("trigger_eur")
-
-    price_str = f"€{price:.0f}" if isinstance(price, (int, float)) else "€?"
-    head = f"{name} — {price_str}"
-    if isinstance(ref, (int, float)) and isinstance(discount, (int, float)) and isinstance(saving, (int, float)):
-        head += f" (normal €{ref:.0f}, {round(discount * 100)}% off, saves €{saving:.0f})"
-    parts = [head]
-    if trigger:
-        parts.append(f"your trigger was €{trigger:.0f}")
-    n_listings = c.get("corroborate_n_listings")
-    if n_listings:
-        parts.append(f"corroborated: {n_listings} current listings")
-    if c.get("valid_until"):
-        parts.append(f"valid to {_fmt_date(c['valid_until'])}")
-    return " · ".join(parts)
-
-
 def _headline(c):
-    line = _consumable_line(c) if c.get("sku_class") == "consumable" else _durable_line(c)
-    if not c.get("on_list", True):
-        line = "Off-list find — " + line
-    return line
+    return _consumable_line(c)
 
 
 def _item_dict(c):
@@ -672,15 +634,11 @@ _CAVEATS_TEXT = (
 
 
 def build_email_html(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
-    on_list_items = [c for c in emailable if c.get("on_list", True)]
-    offlist_items = [c for c in emailable if not c.get("on_list", True)][:C.MAX_OFFLIST_LINES]
-
     top5_html = "".join(_render_item_html(c) for c in top5)
     retailer_html = "".join(
         f"<h3>{_esc(retailer)}</h3>" + "".join(_render_item_html(c) for c in items)
-        for retailer, items in _grouped_by_retailer(on_list_items)
+        for retailer, items in _grouped_by_retailer(emailable)
     )
-    offlist_html = "".join(_render_item_html(c) for c in offlist_items)
 
     reject_lines = _reject_footer_lines(rejects)[:C.MAX_REJECT_LINES]
     reject_html = "".join(f"<div style='font-size:12px;color:#999'>{_esc(l)}</div>" for l in reject_lines)
@@ -706,7 +664,6 @@ def build_email_html(subject, top5, emailable, rejects, reports, stale, today, m
         f"<h2 style='margin-bottom:4px'>{_esc(subject)}</h2>"
         f"<h3>Top {C.TOP_N_BLOCK}</h3>{top5_html}"
         f"{retailer_html}"
-        f"<h3>Off-list finds</h3>{offlist_html}"
         f"<h3>Also seen &amp; rejected ({len(rejects)} total)</h3>{reject_html}"
         f"<h3>Source report</h3>{report_html}"
         f"<h3>Catalog health</h3>{health_html}"
@@ -717,16 +674,11 @@ def build_email_html(subject, top5, emailable, rejects, reports, stale, today, m
 
 
 def build_email_text(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
-    on_list_items = [c for c in emailable if c.get("on_list", True)]
-    offlist_items = [c for c in emailable if not c.get("on_list", True)][:C.MAX_OFFLIST_LINES]
-
     parts = [subject, "", f"Top {C.TOP_N_BLOCK}:"]
     parts += [_render_item_text(c) for c in top5]
-    for retailer, items in _grouped_by_retailer(on_list_items):
+    for retailer, items in _grouped_by_retailer(emailable):
         parts.append(f"\n{retailer}:")
         parts += [_render_item_text(c) for c in items]
-    parts.append("\nOff-list finds:")
-    parts += [_render_item_text(c) for c in offlist_items]
 
     reject_lines = _reject_footer_lines(rejects)[:C.MAX_REJECT_LINES]
     parts.append(f"\nAlso seen & rejected ({len(rejects)} total):")

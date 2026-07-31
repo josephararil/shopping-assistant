@@ -11,15 +11,11 @@ Fixtures (see OFFERS below):
   - Lidl salmon fillet promo at 9.80 EUR/kg with NO seeded shelf series -> falls to the
     L3 llm_reference at 12.00 EUR/kg -> Fair (18% under, below
     the 20% Strong-Buy discount rung) -> exercises the exact
-    "buy 5 kg = 49.00 EUR, saves 11.00 EUR" consumable line.
+    "buy 5 kg = 49.00 EUR, saves 11.00 EUR" consumable line. Its audited value_case also
+    carries the HTML-escaping payload (<script> and "Ben & Jerry's").
   - Lidl chicken breast promo at 9.00 EUR/kg vs a 6.00 EUR/kg observed shelf p25 ->
     rejected `over_reference` at Stage 2, before any LLM sees it -> exercises the
     reject footer's real EUR/kg-vs-shelf-price line.
-  - Sony WH-1000XM5 at 179 EUR against its 200 EUR trigger -> Strong Buy outright, with NO
-    reference price -> exercises the "no reference price" durable rendering and the
-    HTML-escaping test (its audited value_case prose carries <script> and "Ben & Jerry's").
-  - A generic washing machine at a claimed 40% off, fit_score 20 -> fails both the evidence
-    and fit gates -> Skip, never emailed -> exercises "never shows in the digest".
   - An olive oil promo with an unparseable pack size -> the audit never recovers a usable
     unit price -> quarantined -> exercises "never enters price_history".
   - A Lidl REGULAR row for the same salmon sku -> recorded into the `regular` series with
@@ -119,19 +115,13 @@ import find_deals as fd
 OFFERS = [
     {"source": "lidl", "retailer": "Lidl", "name": "Сьомга филе 1 кг", "price_eur": 9.80,
      "was_price_eur": None, "claimed_discount": None, "valid_until": "2026-08-27",
-     "url": "https://lidl.bg/salmon", "heat": None, "category_hint": None, "raw": ""},
+     "url": "https://lidl.bg/salmon", "heat": None, "raw": ""},
     {"source": "lidl", "retailer": "Lidl", "name": "Пилешко филе 1 кг", "price_eur": 9.00,
      "was_price_eur": None, "claimed_discount": None, "valid_until": None,
-     "url": "", "heat": None, "category_hint": None, "raw": ""},
-    {"source": "ccc", "retailer": "Amazon.de", "name": "Sony WH-1000XM5", "price_eur": 179.0,
-     "was_price_eur": 349.0, "claimed_discount": 0.4871, "valid_until": None,
-     "url": "https://amazon.de/sony", "heat": None, "category_hint": None, "raw": ""},
-    {"source": "mydealz", "retailer": "mydealz", "name": "Перална машина Bosch 7кг", "price_eur": 300.0,
-     "was_price_eur": 500.0, "claimed_discount": 0.40, "valid_until": None,
-     "url": "", "heat": 50, "category_hint": None, "raw": ""},
+     "url": "", "heat": None, "raw": ""},
     {"source": "ccc", "retailer": "Amazon.de", "name": "Зехтин намаление", "price_eur": 9.99,
      "was_price_eur": 13.99, "claimed_discount": 0.2859, "valid_until": None,
-     "url": "", "heat": None, "category_hint": None, "raw": ""},
+     "url": "", "heat": None, "raw": ""},
 ]
 for _o in OFFERS:
     match.annotate(_o)
@@ -159,28 +149,10 @@ _AUDIT_BY_SKU = {
         "ref_comparators": "matches the household's own par", "trap_detected": "none",
         "fit_score": 88, "quality_flag": "ok",
         "the_math": "18% under par; not yet at the 20% Strong-Buy rung.",
-        "about": "Norwegian salmon fillet.", "value_case": "Solid freezer stock-up at this price.",
+        "about": "Norwegian salmon fillet.",
+        "value_case": "Ben & Jerry's <script>alert(1)</script> good a deal as it gets at this price.",
         "market_insight": "Deeper dips appear around Orthodox fasting periods.",
         "bulk_advice": "Portion into 400 g bags and freeze.", "red_flags": "none",
-    },
-    "av.sony_xm5": {
-        "reference_price_eur": None, "ref_confidence": "low",
-        "ref_comparators": "no credible current comparator found", "trap_detected": "none",
-        "fit_score": 60, "quality_flag": "ok",
-        "the_math": "Below the household's own pre-committed trigger price.",
-        "about": "Sony's flagship noise-cancelling headphones.",
-        "value_case": "Ben & Jerry's <script>alert(1)</script> good a deal as it gets at this price.",
-        "market_insight": "Rarely dips below 220 EUR outside sale events.",
-        "bulk_advice": "One unit only.", "red_flags": "Confirm the warranty region before buying.",
-    },
-    "house.washing_machine": {
-        "reference_price_eur": 500.0, "ref_confidence": "medium",
-        "ref_comparators": "matches the retailer's own claimed was-price, unverified elsewhere",
-        "trap_detected": "none", "fit_score": 20, "quality_flag": "ok",
-        "the_math": "The existing machine works fine; low household value from a new one.",
-        "about": "A generic 7 kg washing machine.",
-        "value_case": "Not worth it; nothing is broken.",
-        "market_insight": "", "bulk_advice": "n/a", "red_flags": "none",
     },
     "food.olive_oil": {
         # Deliberately NO pack_qty/pack_unit -> pending_qty stays True -> quarantined.
@@ -244,23 +216,27 @@ try:
     assert _email, "send_email was never called — no Strong Buy/Fair reached email"
     html_body, text_body = _email["html"], _email["text"]
 
-    # Retailer sections appear in catalog.RETAILER_ORDER order (Lidl before Amazon.de).
-    assert "Lidl" in html_body and "Amazon.de" in html_body, "expected Lidl and Amazon.de sections"
-    assert html_body.index(">Lidl<") < html_body.index(">Amazon.de<"), \
-        "retailer sections must follow catalog.RETAILER_ORDER (Lidl before Amazon.de)"
-    print("Retailer sections ordered per catalog.RETAILER_ORDER [OK]")
+    # The Lidl retailer section appears. (The Amazon.de olive-oil lead is quarantined
+    # to a Skip verdict — unparseable pack size — so it is never emailed and there is
+    # no second retailer section left to order against; retailer ordering itself is
+    # unaffected by the durable-class removal.)
+    assert "Lidl" in html_body, "expected a Lidl section"
+    print("Lidl retailer section present [OK]")
 
     # Top-5 present and repeat-free (no seen state existed before this run).
     assert f"Top {C.TOP_N_BLOCK}" in html_body, "Top-N block header missing"
     assert "(repeat)" not in html_body, "first-ever run must have no repeats"
     print("Top-5 block present and repeat-free [OK]")
 
-    # All three verdict badges render somewhere in the run log.
+    # Fair and Skip verdict badges render somewhere in the run log. (Strong Buy was
+    # previously only exercised by the Sony trigger-hit fixture, now removed with the
+    # durable class; no remaining fixture reaches Strong Buy without adding a second
+    # emailed item, which would break the deals_history count pinned below. Strong
+    # Buy's rendering path stays covered by test_verdicts.py's verdict_consumable cases.)
     run_md = open("state/run.md", encoding="utf-8").read()
-    for badge in (C.VERDICT_LABEL[C.VERDICT_STRONG], C.VERDICT_LABEL[C.VERDICT_FAIR],
-                  C.VERDICT_LABEL[C.VERDICT_SKIP]):
+    for badge in (C.VERDICT_LABEL[C.VERDICT_FAIR], C.VERDICT_LABEL[C.VERDICT_SKIP]):
         assert badge in run_md, f"verdict badge {badge!r} missing from run.md"
-    print("All three verdict badges rendered [OK]")
+    print("Fair and Skip verdict badges rendered [OK]")
 
     # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00.
     assert "buy 5 kg = €49.00, saves €11.00" in html_body, \
@@ -283,18 +259,7 @@ try:
         "catalog-health line missing"
     print("Catalog health line present [OK]")
 
-    # Off-list / spam guard: the low-fit washing machine must never reach Strong Buy —
-    # it fails both evidence and fit gates and is never emailed at all.
-    assert "Перална машина" not in html_body, "washing machine must not appear in the digest"
-    print("Low-fit washing machine never reaches the digest [OK]")
-
-    # Sony XM5: trigger hit -> Strong Buy with NO reference price, no NaN/None/EUR-None.
-    assert "Sony WH-1000XM5" in html_body, "Sony XM5 missing from digest"
-    sony_idx = html_body.index("Sony WH-1000XM5")
-    badge_window = html_body[max(0, sony_idx - 300):sony_idx]
-    assert C.VERDICT_LABEL[C.VERDICT_STRONG] in badge_window, "Sony XM5 should be a Strong Buy"
     assert "NaN" not in html_body and "€None" not in html_body, "unrendered null leaked into the email"
-    print("Sony XM5 Strong Buy with no reference price, no NaN/None leakage [OK]")
 
     # HTML escaping: raw <script> must be absent; escaped forms must be present.
     assert "<script>alert(1)</script>" not in html_body, "raw <script> leaked into email HTML"
@@ -371,8 +336,8 @@ try:
     # deals_history.json: exactly the emailed set.
     n_strong = html_body.count(C.VERDICT_LABEL[C.VERDICT_STRONG])
     deals_hist = json.load(open("state/deals_history.json", encoding="utf-8"))
-    assert len(deals_hist["entries"]) == 2, \
-        f"expected 2 emailed deals (salmon Fair + Sony Strong), got {len(deals_hist['entries'])}"
+    assert len(deals_hist["entries"]) == 1, \
+        f"expected 1 emailed deal (salmon Fair), got {len(deals_hist['entries'])}"
     print("deals_history.json holds exactly the emailed set [OK]")
 
     # deals_history.json is web/'s ONLY input, and web/ re-renders the numbers itself rather

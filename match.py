@@ -7,9 +7,9 @@ par to every Bulgarian deal. Here NOTHING keys on prose: `name` is display-only,
 the key everywhere, and matching is whole-token AND-sets with a hard veto list.
 
 See catalog.py's docstring for the matching rules and the scratchpad CONTRACT for the
-worked token examples. `fold`, `tokens` and `slug` are the frozen seam — three modules
-depend on their exact behaviour, so they are pinned here with their examples in doctest
-form rather than described in prose.
+worked token examples. `fold` and `tokens` are the frozen seam — modules depend on their
+exact behaviour, so they are pinned here with their examples in doctest form rather than
+described in prose.
 """
 
 import re
@@ -95,19 +95,6 @@ def tokens(text):
     return out
 
 
-def slug(name):
-    """Stable ascii slug for a provisional off-list discovery sku.
-
-    Used as `"disc." + slug(name)`. Stability matters: the slug IS the history key for
-    that product, so a drifting name silently forks its history — which is exactly why
-    `disc.*` skus prune at DISC_SKU_MAX_DAYS rather than accumulating forever.
-
-    >>> slug("Sony WH-1000XM5 Безжични слушалки")
-    'sony-wh-1000xm5-bezzhichni-slushalki'
-    """
-    return "-".join(fold(name).split())[:80] or "unknown"
-
-
 def unit_of(sku):
     """The base unit ("kg" | "L" | "pc") a sku's unit price is denominated in, or None."""
     return (catalog.CATALOG.get(sku) or {}).get("unit")
@@ -178,9 +165,10 @@ def _to_amount(raw):
     """Turn a captured money body into a float, resolving separator ambiguity.
 
     This exists because the naive version silently understated prices by up to 1000x,
-    which is the worst possible failure in this pipeline: a EUR 2499 television read as
-    EUR 2.499 is below every trigger_eur in the catalog, so it becomes an instant false
-    Strong Buy. One parser slip is amplified by every gate downstream.
+    which is the worst possible failure in this pipeline: a EUR 2499 price read as
+    EUR 2.499 makes a pack look 1000x cheaper than it is, so its unit price lands far
+    under any reference and it becomes an instant false Strong Buy. One parser slip is
+    amplified by every gate downstream.
 
     Rules, in order:
       - both '.' and ',' present  -> the LAST one is the decimal separator
@@ -317,7 +305,7 @@ def match_sku(offer):
             continue
         for group in rules.get("any_of", []):
             if set(group).issubset(toks):
-                high = len(group) >= 2 or sku in catalog.WISHLIST
+                high = len(group) >= 2
                 return sku, item.get("class"), ("high" if high else "medium")
     return None, None, None
 
@@ -363,7 +351,7 @@ def annotate(offer):
     offer["sku_class"] = sku_class
     offer["match_conf"] = match_conf
 
-    if sku is None or sku_class == "durable":
+    if sku is None:
         offer["qty"] = None
         offer["unit"] = None
         offer["unit_price_eur"] = None

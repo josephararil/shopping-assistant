@@ -4,9 +4,13 @@ This file is the FROZEN CONTRACT for the whole pipeline. Field names, units, div
 verdict thresholds and the evidence model are authoritative here; every other module
 binds to these names rather than restating a number.
 
-Product data (the watchlist, the wishlist, retailer aliases, unit aliases) lives in
-catalog.py, deliberately separated: it is ~400 lines of data with no logic, and mixing
-it in here is how the travel repo's config.py grew to 727 lines of knobs+data+prompts.
+Product data (the watchlist, retailer aliases, unit aliases) lives in catalog.py,
+deliberately separated: it is data with no logic, and mixing it in here is how the
+travel repo's config.py grew to 727 lines of knobs+data+prompts.
+
+Everything this pipeline tracks is a CONSUMABLE bought in bulk. The durable/wishlist
+class was removed: the user does not buy those, and covers Amazon.de with their own
+camelcamelcamel.de price alert.
 
 ── THE CANONICAL OFFER / CANDIDATE SHAPE ────────────────────────────────────────
 sources.harvest() emits OFFER dicts. Every key is always present; unknown = None.
@@ -20,13 +24,12 @@ sources.harvest() emits OFFER dicts. Every key is always present; unknown = None
   valid_until     str    "YYYY-MM-DD" or None
   url             str    or ""
   heat            int    mydealz community degrees, else None
-  category_hint   str    a catalog.CATEGORY_HINTS key, or None
   raw             str    the source line/title, kept for debugging only
 
 match.annotate() adds, in place:
 
-  sku             str    catalog key, or "disc.<slug>" for off-list discovery, or None
-  sku_class       str    "consumable" | "durable" | None
+  sku             str    catalog key, or None
+  sku_class       str    "consumable" | None
   match_conf      str    "high" | "medium" | None
   qty             float  pack size in the sku's unit, or None
   unit            str    "kg" | "L" | "pc"  — EXACTLY these three spellings
@@ -34,16 +37,9 @@ match.annotate() adds, in place:
   pending_qty     bool   True when sku matched but parse_qty failed; the audit
                          transcribes pack_qty/pack_unit and Python then divides.
 
-prefilter() adds `reject_reason` (str) to rejects, and to every SURVIVOR adds:
-
-  on_list         bool   True for a catalog sku, False for an off-list discovery find.
-                         Passed straight to verdict_durable(on_list=...), which is why
-                         it must be set here and nowhere else.
-
-On an off-list discovery survivor it also MINTS `sku` = "disc." + match.slug(name),
-`sku_class` = "durable" and `match_conf` = "medium". prefilter is the only place a
-`disc.*` sku can come into existence — match.py never invents one, because minting an
-identifier is a budgeting decision (it costs a Stage-4 slot), not a matching one.
+prefilter() adds `reject_reason` (str) to rejects. The complete set of reject reasons is
+`expired`, `no_price`, `no_sku_match`, `over_reference`, `dup`, `over_cap` — and
+test_prefilter.py asserts every emitted reason is one of them.
 
 The audit adds fit_score / reference_price_eur / trap_detected / prose fields.
 Verdict stage adds verdict / discount / saving_eur / evidence / rank_score / failed_gates.
@@ -166,22 +162,6 @@ DEFAULT_SOURCE_CAP = 8
 # Slack above par so a borderline item still gets audited.
 PREFILTER_REFERENCE_SLACK = 1.15
 
-# Durables cannot be prefiltered on price (the normal price is not known yet), only on
-# CLAIMED discount steepness. This is what stops "washing machine 10% off" before it
-# costs a token.
-DURABLE_MIN_CLAIMED_DISCOUNT = 0.30
-DURABLE_MIN_PRICE_EUR        = 30     # a 60% drop on a €9 cable is not news
-
-# Off-list discovery (durables only). Off-list CONSUMABLE discovery is deliberately
-# cut: with no par there is nothing to compute €/kg against.
-DISCOVERY_MIN_CLAIMED_DISCOUNT = 0.50
-DISCOVERY_MIN_PRICE_EUR        = 60
-
-# Cap-filling order weights: mydealz heat earns a place in the ORDERING, never in the
-# verdict. A community-vetted deal deserves a look; it does not deserve a tier.
-HEAT_ORDER_DIVISOR = 300.0   # heat/300, capped at +0.5 on the ordering multiplier
-HEAT_ORDER_MAX     = 0.5
-
 # Stage 3: skus with zero matches from the deterministic feeds this run. With no leaflet
 # source, that is effectively the WHOLE consumable watchlist every week, so this is sized
 # to cover it rather than to sample it. Partial coverage is expected and correct — the
@@ -274,13 +254,12 @@ EVIDENCE_WEIGHTS = {
     # This is the statistic the whole price_history design exists to build.
     "regular_median": 1.0,
     # Stage-5 corroboration found >= CORROBORATE_MIN_LISTINGS independent current
-    # listings. The only path by which a genuine off-list find reaches Strong Buy.
+    # listings — an independently observed reference rather than a claimed one.
     "corroborated":   1.0,
 }
 
 MIN_EVIDENCE_FAIR            = 1.0
 MIN_EVIDENCE_STRONG          = 2.0
-MIN_EVIDENCE_STRONG_OFFLIST  = 2.5
 
 MYDEALZ_HOT_DEGREES     = 300   # community heat that earns the mydealz_hot leg
 REGULAR_MIN_N           = 4     # `regular` observations needed for the regular_median leg
@@ -313,8 +292,6 @@ MAX_OBS_PER_SKU   = 40    # newest N observations kept per sku, PROMO series onl
 # more than one week of shelf prices — the baseline would look populated and be blind.
 REGULAR_MAX_OBS   = 1200  # newest N observations kept per sku, REGULAR series only
 HISTORY_MAX_DAYS  = 540   # TTL for observations on catalog skus
-DISC_SKU_MAX_DAYS = 90    # provisional `disc.*` skus prune fast so name-drift junk
-                          # does not accumulate a phantom history
 
 # promo_floor is the p10 of the PROMO series — the consumable ruthlessness lever.
 # Salmon at €11.98 when the promo floor is €9.80 is not exceptional even though it
@@ -455,22 +432,8 @@ CONSUMABLE_FAIR_DISCOUNT   = 0.05
 CONSUMABLE_STRONG_MIN_FIT  = 70
 PROMO_FLOOR_SLACK          = 1.10   # "near the floor" = within 10% above it
 
-# Durables: the trigger price wins outright — the user pre-committed to an absolute
-# number, so no amount of baseline inflation can fake it. Everything else must clear
-# discount AND absolute saving AND evidence AND fit, and off-list needs more of all.
-DURABLE_STRONG_DISCOUNT          = 0.35
-DURABLE_STRONG_DISCOUNT_OFFLIST  = 0.45
-DURABLE_FAIR_DISCOUNT            = 0.20
-DURABLE_MIN_ABS_SAVING_EUR       = 40
-DURABLE_STRONG_MIN_FIT           = 70
-DURABLE_STRONG_MIN_FIT_OFFLIST   = 82
-
-# Off-list discovery has a HARD Fair ceiling — this is the spam vector, so it is closed
-# in code, not by tuning. Enforced in verdict_durable via on_list=False plus this flag.
-OFFLIST_FAIR_CEILING = True
-
-# rank_score makes a €11 salmon saving and a €170 headphone saving comparable so the
-# Top-5 block can mix classes.
+# rank_score puts every consumable on one scale so the Top-5 block can order a €15
+# olive-oil drum against a €100 whey stock-up.
 RANK_DISCOUNT_WEIGHT  = 40
 RANK_DISCOUNT_FULL    = 0.50    # discount at which the discount term saturates
 RANK_SAVING_WEIGHT    = 40
@@ -499,9 +462,9 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
       low_confidence_reference dominates -> too many skus mix grades; split them (the
                               email's maintenance block names which)
     """
-    # A target_eur is an absolute PROMOTE-ONLY pre-commitment, mirroring a durable's
-    # trigger_eur: the user named this number themselves, so no baseline inflation can
-    # fake it and no other gate applies. It is NEVER a discount denominator — a
+    # A target_eur is an absolute PROMOTE-ONLY pre-commitment: the user named this
+    # number themselves, so no baseline inflation can fake it and no other gate
+    # applies. It is NEVER a discount denominator — a
     # pre-commitment is a floor on the user's willingness to buy, not a market price.
     if (target_eur and unit_price_eur is not None and unit_price_eur <= target_eur):
         discount = 1 - unit_price_eur / reference if reference else 0.0
@@ -524,8 +487,9 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
     if (evidence or 0) < MIN_EVIDENCE_FAIR:
         failed.append("evidence")
     if confidence == CONF_LOW:
-        # A hard Fair ceiling, in CODE rather than in a threshold — the same reasoning
-        # as OFFLIST_FAIR_CEILING. It catches two cases: an L3 llm_reference (no
+        # A hard Fair ceiling, in CODE rather than in a threshold, because a tuning
+        # mistake must not be able to open a spam vector. It catches two cases: an
+        # L3 llm_reference (no
         # LLM-supplied number is ever the authority on price) and a wide-spread L2
         # whose p25 averages across product grades that are not the same thing.
         failed.append("low_confidence_reference")
@@ -536,47 +500,12 @@ def verdict_consumable(unit_price_eur, reference, confidence, floor, fit_score, 
     return VERDICT_SKIP, discount, failed
 
 
-def verdict_durable(price_eur, trigger_eur, ref_eur, evidence, fit_score, on_list):
-    """Trigger price wins outright; everything else must clear four gates at once.
-
-    Returns (verdict, discount, failed_gates). `discount` is None when no reference
-    price is known — callers must treat that as 0 for ranking (rank_score does)."""
-    if trigger_eur and price_eur is not None and price_eur <= trigger_eur:
-        # The user pre-committed to this absolute number. No baseline inflation can
-        # fake it, so no evidence, fit or discount requirement applies.
-        return VERDICT_STRONG, (1 - price_eur / ref_eur if ref_eur else None), []
-    if not ref_eur or price_eur is None:
-        return VERDICT_SKIP, None, ["no_reference"]
-    discount, saving = 1 - price_eur / ref_eur, ref_eur - price_eur
-    min_disc = DURABLE_STRONG_DISCOUNT if on_list else DURABLE_STRONG_DISCOUNT_OFFLIST
-    min_ev   = MIN_EVIDENCE_STRONG     if on_list else MIN_EVIDENCE_STRONG_OFFLIST
-    min_fit  = DURABLE_STRONG_MIN_FIT  if on_list else DURABLE_STRONG_MIN_FIT_OFFLIST
-    failed = []
-    if discount < min_disc:
-        failed.append("discount")
-    if saving < DURABLE_MIN_ABS_SAVING_EUR:
-        failed.append("abs_savings")
-    if (evidence or 0) < min_ev:
-        failed.append("evidence")
-    if (fit_score or 0) < min_fit:
-        failed.append("fit")
-    if not on_list and OFFLIST_FAIR_CEILING:
-        # Hard ceiling, in code rather than in a threshold: off-list discovery reaching
-        # Strong Buy is THE spam vector. A tuning mistake must not be able to open it.
-        failed.append("offlist_ceiling")
-    if not failed:
-        return VERDICT_STRONG, discount, []
-    if discount >= DURABLE_FAIR_DISCOUNT and (evidence or 0) >= MIN_EVIDENCE_FAIR:
-        return VERDICT_FAIR, discount, failed
-    return VERDICT_SKIP, discount, failed
-
-
 def rank_score(discount, saving_eur, verdict, is_repeat=False):
-    """Cross-class ranking for the Top-5 block.
+    """Ranking for the Top-5 block.
 
-    `discount` and `saving_eur` may legitimately be None — verdict_durable returns
-    discount=None on a trigger hit with no known reference, which is exactly the
-    flagship Sony XM5 case. Both are coerced to 0 rather than crashing the run."""
+    `discount` and `saving_eur` may legitimately be None — a lead can reach a verdict
+    with no computable saving (no bulk_qty, or no reference). Both are coerced to 0
+    rather than crashing the run."""
     return round(
         RANK_DISCOUNT_WEIGHT * min(1.0, max(0.0, (discount or 0)) / RANK_DISCOUNT_FULL)
         + RANK_SAVING_WEIGHT * min(1.0, max(0.0, (saving_eur or 0)) / RANK_SAVING_FULL_EUR)
@@ -587,19 +516,14 @@ def rank_score(discount, saving_eur, verdict, is_repeat=False):
 def saving_eur_for(cand):
     """The real money moved by acting on this lead.
 
-    Consumables: (reference - unit_price) * bulk_qty — what "buy 5 kg and freeze"
-    actually saves, which is the number the user reasons with. Durables: ref - price.
+    (reference - unit_price) * bulk_qty — what "buy 5 kg and freeze" actually saves,
+    which is the number the user reasons with, and the number the stock-up gate floors.
     Returns None when the inputs to make it honest are missing."""
-    if cand.get("sku_class") == "consumable":
-        ref  = cand.get("reference_eur")
-        unit = cand.get("unit_price_eur")
-        bulk = cand.get("bulk_qty")
-        if ref and unit is not None and bulk:
-            return round((ref - unit) * bulk, 2)
-        return None
-    ref, price = cand.get("reference_price_eur"), cand.get("price_eur")
-    if ref and price is not None:
-        return round(ref - price, 2)
+    ref  = cand.get("reference_eur")
+    unit = cand.get("unit_price_eur")
+    bulk = cand.get("bulk_qty")
+    if ref and unit is not None and bulk:
+        return round((ref - unit) * bulk, 2)
     return None
 
 
@@ -622,11 +546,10 @@ PRICE_BREAKTHROUGH = 0.15
 def price_bucket(cand):
     """~5%-wide multiplicative bucket index for the anti-spam key.
 
-    Consumables bucket on unit_price_eur (€/kg is what the household compares);
-    durables on price_eur (the ticket is the decision). Returns 0 for a missing or
-    non-positive price so a broken lead cannot collide with a real one's bucket."""
-    price = (cand.get("unit_price_eur") if cand.get("sku_class") == "consumable"
-             else cand.get("price_eur"))
+    Buckets on unit_price_eur — €/kg is what the household compares. Returns 0 for a
+    missing or non-positive price so a broken lead cannot collide with a real one's
+    bucket."""
+    price = cand.get("unit_price_eur")
     if not isinstance(price, (int, float)) or price <= 0:
         return 0
     return int(math.floor(math.log(price) / math.log(1 + PRICE_BUCKET_PCT)))
@@ -653,9 +576,8 @@ MAX_PROMPT_SKUS     = 12   # skus injected into a prompt's {memory} block
 MAX_PROMPT_OUTCOMES = 10   # recent ledger outcomes injected into {memory}
 
 # ── Email ───────────────────────────────────────────────────────────────────
-TOP_N_BLOCK       = 5    # "Top 5 of the week", repeat-free, across retailers+classes
+TOP_N_BLOCK       = 5    # "Top 5 of the week", repeat-free, across retailers
 MAX_REJECT_LINES  = 40   # one-line reject footer, then a count for the rest
-MAX_OFFLIST_LINES = 8    # off-list discovery block, badged, Fair ceiling
 CATALOG_STALE_RUNS = 8   # runs_since_matched at which a sku is surfaced as a bad rule
 
 # Email only when strong_buy + fair >= this. Otherwise write state and exit.
@@ -682,11 +604,6 @@ def gates_prompt_text():
         f"- A consumable reaches Strong Buy only at >= {round(CONSUMABLE_STRONG_DISCOUNT * 100)}% "
         f"under the household's target unit price, AND near its historical promo floor "
         f"(within {round((PROMO_FLOOR_SLACK - 1) * 100)}%), AND fit_score >= {CONSUMABLE_STRONG_MIN_FIT}.\n"
-        f"- A wishlist durable at or below its trigger price is a Strong Buy outright.\n"
-        f"- Any other durable needs >= {round(DURABLE_STRONG_DISCOUNT * 100)}% off a CREDIBLE "
-        f"reference, >= EUR {DURABLE_MIN_ABS_SAVING_EUR} absolute saving, and fit_score "
-        f">= {DURABLE_STRONG_MIN_FIT}.\n"
-        f"- An off-list find can never exceed Fair, however steep the claimed discount.\n"
         f"- A retailer's own 'was' price is worth {EVIDENCE_WEIGHTS['retailer_claim']} of the "
         f"{MIN_EVIDENCE_STRONG} reference-credibility needed for a Strong Buy. It is nearly "
         f"worthless on its own — which is why an honest reference_price_eur matters more than "
