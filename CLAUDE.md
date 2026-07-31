@@ -527,7 +527,11 @@ and `promo_floor` needs ~6 weeks to bite.
 - `discount` dominates → `CONSUMABLE_STRONG_DISCOUNT` is too high
 - `evidence` dominates → corroboration is under-firing; **raise `MAX_CORROBORATE_PER_RUN`, do not
   lower the evidence bar**
-- `abs_savings` dominates → the watchlist is full of low-ticket items; prune the catalog
+- `stockup_value` dominates → the watchlist holds items whose bulk saving is under
+  `STOCKUP_MIN_SAVING_EUR`; prune them, raise their `bulk_qty` to what the household really buys,
+  or lower the floor. **Check whether these leads also carry `evidence`** — a lead failing both is
+  excluded from Stage-5 corroboration by `find_deals`'s exact `failed_gates == ["evidence"]`
+  selector, so raising `MAX_CORROBORATE_PER_RUN` will not touch it
 - `near_floor` dominates → the market routinely beats the observed reference
 - `low_confidence_reference` dominates → too many skus mix product grades; split them. The
   email's Catalog maintenance block names exactly which ones
