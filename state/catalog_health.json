@@ -1,43 +1,43 @@
 {
   "skus": {
     "food.salmon_fillet": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.chicken_breast": {
-      "runs_since_matched": 1,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-07-31"
     },
     "food.olive_oil": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.coffee_beans": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "supp.whey_protein": {
-      "runs_since_matched": 1,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-07-31"
     },
     "house.laundry_gel": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.pork_meat": {
-      "runs_since_matched": 1,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-07-31"
     },
     "food.beef_mince": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.turkey_breast": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.white_fish": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.rice": {
@@ -45,11 +45,11 @@
       "last_matched": "2026-07-31"
     },
     "food.pasta": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.flour": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.sugar": {
@@ -57,7 +57,7 @@
       "last_matched": "2026-07-31"
     },
     "food.lentils": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.beans_dried": {
@@ -65,19 +65,19 @@
       "last_matched": "2026-07-31"
     },
     "food.oats": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.tomatoes_tinned": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.tuna_tinned": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.sweetcorn_tinned": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.butter": {
@@ -85,15 +85,15 @@
       "last_matched": "2026-07-31"
     },
     "food.cheese_hard": {
-      "runs_since_matched": 1,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-07-31"
     },
     "food.kashkaval": {
       "runs_since_matched": 0,
       "last_matched": "2026-07-31"
     },
     "food.milk": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.yoghurt": {
@@ -101,151 +101,151 @@
       "last_matched": "2026-07-31"
     },
     "food.eggs": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.sunflower_oil": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.vinegar": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.honey": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.walnuts": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.almonds": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.frozen_vegetables": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.tea": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.dishwasher_tablets": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.laundry_capsules": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.fabric_softener": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.toilet_paper": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.kitchen_roll": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.bin_bags": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.all_purpose_cleaner": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.shampoo": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "house.toothpaste": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "baby.nappies": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "baby.wipes": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "av.sony_xm5": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "tech.robot_vacuum": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "tech.nas_hdd_4tb": {
-      "runs_since_matched": 1,
-      "last_matched": null
-    },
-    "kitchen.airfryer": {
       "runs_since_matched": 0,
       "last_matched": "2026-07-31"
     },
-    "tech.laptop": {
+    "house.toothpaste": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "baby.nappies": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "baby.wipes": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "av.sony_xm5": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "tech.robot_vacuum": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "tech.nas_hdd_4tb": {
+      "runs_since_matched": 2,
+      "last_matched": null
+    },
+    "kitchen.airfryer": {
       "runs_since_matched": 1,
+      "last_matched": "2026-07-31"
+    },
+    "tech.laptop": {
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "tech.tablet": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "tech.phone": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "av.tv": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "tech.ereader": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "kitchen.coffee_machine": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "kitchen.stand_mixer": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "kitchen.multicooker": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.dishwasher": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.washing_machine": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.stick_vacuum": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "house.chest_freezer": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "baby.car_seat": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "tools.cordless_diy": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     }
   }
