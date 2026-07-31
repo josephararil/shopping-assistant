@@ -201,8 +201,7 @@ _SERIES_CAP = {"promo": "MAX_OBS_PER_SKU", "regular": "REGULAR_MAX_OBS"}
 
 def prune(hist):
     """Keep the newest per-series cap of observations, drop anything older than
-    C.HISTORY_MAX_DAYS (C.DISC_SKU_MAX_DAYS for provisional `disc.*` skus, so
-    name-drift junk cannot accumulate a phantom history).
+    C.HISTORY_MAX_DAYS.
 
     The cap is PER SERIES, not one number for both — see C.REGULAR_MAX_OBS. `regular`
     now takes one row per distinct Lidl product code per run, dozens per week on the
@@ -210,7 +209,7 @@ def prune(hist):
     run and leave any rolling window blind while still looking populated."""
     today = dt.date.today()
     for sku, entry in hist.get("skus", {}).items():
-        max_days = C.DISC_SKU_MAX_DAYS if sku.startswith("disc.") else C.HISTORY_MAX_DAYS
+        max_days = C.HISTORY_MAX_DAYS
         cutoff = (today - dt.timedelta(days=max_days)).isoformat()
         for series in ("promo", "regular"):
             cap = getattr(C, _SERIES_CAP[series])
