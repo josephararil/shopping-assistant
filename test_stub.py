@@ -21,7 +21,7 @@ Fixtures (see OFFERS below):
   - A Lidl REGULAR row for the same salmon sku -> recorded into the `regular` series with
     source="lidl_regular"; the salmon PROMO row above must never reach `regular`.
   - `mydealz` source report is forced to ok=False -> exercises the FAILED-source line.
-  - `catalog_health.json` is seeded with runs_since_matched=7 for house.laundry_gel, which
+  - `catalog_health.json` is seeded with runs_since_matched=7 for food.lentils, which
     is not matched this run -> becomes stale (>=8) -> exercises the catalog-health line.
 
 Run: python test_stub.py
@@ -42,7 +42,7 @@ os.chdir(sandbox)
 # Seed catalog_health so ONE known sku is one run away from CATALOG_STALE_RUNS (8) and
 # will not be matched this run -> becomes stale and renders a catalog-health line.
 with open("state/catalog_health.json", "w", encoding="utf-8") as f:
-    json.dump({"skus": {"house.laundry_gel": {"runs_since_matched": 7, "last_matched": "2026-06-01"}}}, f)
+    json.dump({"skus": {"food.lentils": {"runs_since_matched": 7, "last_matched": "2026-06-01"}}}, f)
 
 # Seed price_history for TWO things at once:
 #
@@ -53,12 +53,18 @@ with open("state/catalog_health.json", "w", encoding="utf-8") as f:
 #
 #   food.chicken_breast  a TIGHT shelf series around 6.00/kg -> a usable high-confidence
 #                        reference, so 9.00/kg is rejected over_reference.
-#   house.laundry_gel    a WIDE series, 2.00..12.00/L -> spread far over
+#   food.milk            a WIDE series, 2.00..12.00/L -> spread far over
 #                        BASELINE_MAX_SPREAD, so it must appear in the maintenance block.
+#                        Chosen over food.olive_oil (the plan's original pick) because
+#                        olive_oil already plays the QUARANTINED-lead role below (~line
+#                        157) and is asserted absent from price_history.json entirely
+#                        (~line 277) — seeding it here would collide with that guard.
+#                        food.milk is the only other surviving sku with unit L, so the
+#                        /L unit in the expected regex is preserved.
 #   food.pork_meat       a TIGHT series -> must NOT appear in the maintenance block. This
 #                        is what keeps the threshold load-bearing: without it, deleting
 #                        the spread check entirely still passed.
-#   food.coffee_beans    PROMO observations only, no regular ones. It must produce NO
+#   food.kashkaval       PROMO observations only, no regular ones. It must produce NO
 #                        maintenance line and NO reference — a promo series is every
 #                        source by construction, and letting it inform the reference is
 #                        failure mode #1, which fails invisibly.
@@ -83,13 +89,13 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
             "stats": {"promo": _NONE_P,
                       "regular": {"n": 4, "median": 6.10, "span_days": 45}},
         },
-        "house.laundry_gel": {
+        "food.milk": {
             "unit": "L", "class": "consumable", "promo": [],
             "regular": [_obs(d, pr, "lidl_regular") for (d,), pr in zip(_D, _WIDE)],
             "stats": {"promo": _NONE_P,
                       "regular": {"n": 4, "median": 4.00, "span_days": 45}},
         },
-        "food.coffee_beans": {
+        "food.kashkaval": {
             "unit": "kg", "class": "consumable",
             "promo": [_obs(d, 28.00, "lidl") for (d,) in _D],
             "regular": [],
@@ -255,7 +261,7 @@ try:
     print("Source report includes a FAILED source [OK]")
 
     # Catalog health line for the seeded stale sku.
-    assert "house.laundry_gel" in html_body and "no match in" in html_body, \
+    assert "food.lentils" in html_body and "no match in" in html_body, \
         "catalog-health line missing"
     print("Catalog health line present [OK]")
 
@@ -383,16 +389,16 @@ try:
     # SILENTLY — nothing errors while the sku quietly never reaches Strong Buy again. The
     # block is what turns that into a finite, visible to-do list.
     assert "Catalog maintenance" in html_body, "maintenance block missing from the digest"
-    assert re.search(r"house\.laundry_gel: shelf prices run €2\.00–€12\.00/L "
+    assert re.search(r"food\.milk: shelf prices run €2\.00–€12\.00/L "
                      r"\(6\.0x spread, n=4\)", html_body), \
         "maintenance line missing or malformed for the seeded wide-spread sku"
-    assert "Catalog maintenance" in text_body and "house.laundry_gel: shelf prices run" in text_body, \
+    assert "Catalog maintenance" in text_body and "food.milk: shelf prices run" in text_body, \
         "maintenance line missing from the text part"
 
     # A PROMO-only series must never produce a reference or a maintenance line. Every
     # source here is a promotions feed by construction, so a reference blended from them
     # walks downhill every week until the digest goes silently empty.
-    assert "food.coffee_beans" not in html_body, \
+    assert "food.kashkaval" not in html_body, \
         "maintenance must read the regular series only — a promo-priced spread leaked in"
 
     # ...and a tight series is not news. Reporting it would train the user to ignore the
