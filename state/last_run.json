@@ -23,26 +23,27 @@
   "stage_counts": {
     "harvested": 74,
     "prefiltered_in": 74,
-    "prefiltered_out": 6,
-    "discovered": 9,
+    "prefiltered_out": 3,
+    "discovered": 12,
     "audited": 13,
-    "strong_buy": 6,
-    "fair": 4,
-    "skip": 3,
-    "emailed": 0
+    "strong_buy": 0,
+    "fair": 6,
+    "skip": 7,
+    "emailed": 6
   },
   "rejects_by_reason": {
-    "no_sku_match": 57,
-    "no_price": 8,
-    "over_par": 1,
+    "no_sku_match": 65,
+    "over_reference": 1,
+    "no_price": 3,
     "dup": 2
   },
   "failed_gates": {
-    "discount": 6,
-    "fit": 2
+    "stockup_value": 12,
+    "discount": 10,
+    "evidence": 10,
+    "low_confidence_reference": 10,
+    "fit": 3
   },
   "stale_skus": [],
-  "model_fallbacks": [
-    "gemini-pro-latest->gemini-flash-latest"
-  ]
+  "model_fallbacks": []
 }

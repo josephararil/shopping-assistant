@@ -1,6 +1,6 @@
 # Shop Hunter Run — 2026-07-31
 
-Strong Buy: 6 · Fair: 4 · Emailed: 0
+Strong Buy: 0 · Fair: 6 · Emailed: 6
 
 ## Source report
 - ccc: ok n=20 
@@ -8,16 +8,16 @@ Strong Buy: 6 · Fair: 4 · Emailed: 0
 - lidl: ok n=700 
 
 ## Evaluated leads
-- ✅ Strong Buy — Duschdas 3-in-1 Duschgel & Shampoo for Men mit Fresh-Energy-Duftformel 6 x 225 ml (Prime Spar-Abo) (house.shampoo) failed=[]
-- · Skip — Krina Ориз Перлен (food.rice) failed=['discount']
-- ✅ Strong Buy — Кисело мляко 2% ЗНП (food.yoghurt) failed=[]
-- · Skip — Железница Кашкавал от краве мляко (food.kashkaval) failed=['discount']
-- ◾ Fair — Прясно краве масло (food.butter) failed=['discount']
-- ◾ Fair — Zahira Захар (food.sugar) failed=['discount']
-- ✅ Strong Buy — Сирене От краве мляко (Наше село) (food.cheese_hard) failed=[]
-- ✅ Strong Buy — Свински бут без кост (food.pork_meat) failed=[]
-- ◾ Fair — Кашкавал от краве мляко MILKI DREAM (food.cheese_hard) failed=['fit']
-- ✅ Strong Buy — Свинско каре без кост (food.pork_meat) failed=[]
-- ✅ Strong Buy — Прясно пилешко филе (food.chicken_breast) failed=[]
-- ◾ Fair — Свински ребра, вакуум (food.pork_meat) failed=['discount']
-- · Skip — BIOTECH USA Protein Power (supp.whey_protein) failed=['discount', 'fit']
+- ◾ Fair — Железница Кашкавал от краве мляко (food.kashkaval) failed=['stockup_value']
+- ◾ Fair — Извара (food.cottage_cheese) failed=['discount', 'stockup_value']
+- ◾ Fair — Ориз среднозърнест 5% начупеност (food.rice) failed=['discount', 'stockup_value']
+- · Skip — Pork Shoulder without Bone Masters Butchers (food.pork_meat) failed=['discount', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Beef Mince from Bredas Farm Without Preservatives (food.beef_mince) failed=['discount', 'fit', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Couscous Stella (food.couscous) failed=['discount', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Tomato Cubes Novi Canned (food.tomatoes_tinned) failed=['discount', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Tuna Neptune Pieces in Vegetable Oil (food.tuna_tinned) failed=['discount', 'fit', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Corn Krina Sweet (food.sweetcorn_tinned) failed=['discount', 'evidence', 'stockup_value', 'low_confidence_reference']
+- · Skip — Chickpeas Chef is (food.chickpeas_tinned) failed=['discount', 'evidence', 'stockup_value', 'low_confidence_reference']
+- ◾ Fair — White Beans Zimnina (food.beans_tinned) failed=['discount', 'fit', 'evidence', 'stockup_value', 'low_confidence_reference']
+- ◾ Fair — Cow's Milk Mizo 3,5% UHT (food.milk) failed=['evidence', 'stockup_value', 'low_confidence_reference']
+- ◾ Fair — Toilet Paper Emeka Paradise (house.toilet_paper) failed=['evidence', 'low_confidence_reference']
