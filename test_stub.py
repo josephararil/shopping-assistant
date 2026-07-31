@@ -68,6 +68,10 @@ with open("state/catalog_health.json", "w", encoding="utf-8") as f:
 #                        maintenance line and NO reference — a promo series is every
 #                        source by construction, and letting it inform the reference is
 #                        failure mode #1, which fails invisibly.
+#   supp.whey_protein    a TIGHT shelf series around 39.50/kg -> a high-confidence L2
+#                        reference, so the second offer below (a non-Lidl retailer,
+#                        see OFFERS) clears every gate and is the fixture that finally
+#                        exercises the Strong Buy badge (see the assertions below).
 _D = [(60, ), (45, ), (30, ), (15, )]
 with open("state/price_history.json", "w", encoding="utf-8") as f:
     def _obs(days_ago, price, source):
@@ -82,6 +86,7 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
     _WIDE_PROMO = [6.00, 9.00, 15.00, 36.00]   # also 6.0x, but in the PROMO series only
     _TIGHT_CHICKEN = [5.80, 6.00, 6.20, 6.40]
     _TIGHT_PORK = [4.80, 4.90, 5.00, 5.10]
+    _TIGHT_WHEY = [38.00, 39.00, 40.00, 41.00]     # p10=38, p25=38, p90=41 -> 1.08x spread
     json.dump({"skus": {
         "food.chicken_breast": {
             "unit": "kg", "class": "consumable", "promo": [],
@@ -116,6 +121,12 @@ with open("state/price_history.json", "w", encoding="utf-8") as f:
             "stats": {"promo": _NONE_P,
                       "regular": {"n": 4, "median": 4.95, "span_days": 45}},
         },
+        "supp.whey_protein": {
+            "unit": "kg", "class": "consumable", "promo": [],
+            "regular": [_obs(d, pr, "lidl_regular") for (d,), pr in zip(_D, _TIGHT_WHEY)],
+            "stats": {"promo": _NONE_P,
+                      "regular": {"n": 4, "median": 39.50, "span_days": 45}},
+        },
     }}, f)
 
 import config as C
@@ -135,6 +146,15 @@ OFFERS = [
      "url": "", "heat": None, "raw": ""},
     {"source": "ccc", "retailer": "Amazon.de", "name": "Зехтин намаление", "price_eur": 9.99,
      "was_price_eur": 13.99, "claimed_discount": 0.2859, "valid_until": None,
+     "url": "", "heat": None, "raw": ""},
+    # Non-Lidl retailer, priced 25.50 EUR/kg against the seeded 38.00 EUR/kg Lidl shelf
+    # reference (L2 category_p25, high confidence, tight spread) -> 32.9% under, clears
+    # discount/near_floor(no promo series -> floor None)/fit/evidence(statutory_shelf=1.0)
+    # and the stockup_value floor ((38.00-25.50)*20=250.00 >= 10.00). Priced above the
+    # 25.00 target_eur on purpose, so this exercises the NORMAL Strong Buy gates rather
+    # than the target_eur early-return bypass.
+    {"source": "ccc", "retailer": "Amazon.de", "name": "Bulk Whey Protein 2 кг", "price_eur": 51.00,
+     "was_price_eur": None, "claimed_discount": None, "valid_until": None,
      "url": "", "heat": None, "raw": ""},
 ]
 for _o in OFFERS:
@@ -178,6 +198,16 @@ _AUDIT_BY_SKU = {
         "value_case": "Cannot judge value until the pack size is confirmed.",
         "market_insight": "", "bulk_advice": "",
         "red_flags": "Confirm pack size before buying.",
+    },
+    "supp.whey_protein": {
+        "reference_price_eur": 30.0, "ref_confidence": "high",
+        "ref_comparators": "matches the Amazon.de Bulk-brand price history", "trap_detected": "none",
+        "fit_score": 90, "quality_flag": "ok",
+        "the_math": "32.9% under the observed Lidl shelf reference; clears the stock-up floor.",
+        "about": "Whey protein powder, Bulk brand.",
+        "value_case": "A genuine annual-cycle price drop, comfortably under target.",
+        "market_insight": "Deepest drops cluster around New Year fitness season.",
+        "bulk_advice": "Buy the full tub; sealed shelf life is 18-24 months.", "red_flags": "none",
     },
 }
 
@@ -230,32 +260,40 @@ try:
     assert _email, "send_email was never called — no Strong Buy/Fair reached email"
     html_body, text_body = _email["html"], _email["text"]
 
-    # The Lidl retailer section appears. (The Amazon.de olive-oil lead is quarantined
-    # to a Skip verdict — unparseable pack size — so it is never emailed and there is
-    # no second retailer section left to order against; retailer ordering itself is
-    # unaffected by the durable-class removal.)
-    assert "Lidl" in html_body, "expected a Lidl section"
-    print("Lidl retailer section present [OK]")
+    # Retailer sections appear in catalog.RETAILER_ORDER order (Lidl before Amazon.de).
+    # The olive-oil lead on Amazon.de is quarantined to a Skip verdict — unparseable
+    # pack size — so it never emails, but the new whey-protein lead (also Amazon.de,
+    # see OFFERS) reaches Strong Buy and gives Amazon.de a section to order against.
+    assert "Lidl" in html_body and "Amazon.de" in html_body, "expected Lidl and Amazon.de sections"
+    assert html_body.index(">Lidl<") < html_body.index(">Amazon.de<"), \
+        "retailer sections must follow catalog.RETAILER_ORDER (Lidl before Amazon.de)"
+    print("Retailer sections ordered per catalog.RETAILER_ORDER [OK]")
 
     # Top-5 present and repeat-free (no seen state existed before this run).
     assert f"Top {C.TOP_N_BLOCK}" in html_body, "Top-N block header missing"
     assert "(repeat)" not in html_body, "first-ever run must have no repeats"
     print("Top-5 block present and repeat-free [OK]")
 
-    # Fair and Skip verdict badges render somewhere in the run log. (Strong Buy was
-    # previously only exercised by the Sony trigger-hit fixture, now removed with the
-    # durable class; no remaining fixture reaches Strong Buy without adding a second
-    # emailed item, which would break the deals_history count pinned below. Strong
-    # Buy's rendering path stays covered by test_verdicts.py's verdict_consumable cases.)
+    # Strong Buy, Fair and Skip verdict badges all render somewhere in the run log.
+    # Strong Buy was previously only exercised by the Sony trigger-hit fixture, removed
+    # with the durable class; the whey-protein fixture above (a non-Lidl retailer
+    # clearing every consumable gate, including the new stockup_value floor) restores
+    # coverage without disturbing the salmon-Fair fixture.
     run_md = open("state/run.md", encoding="utf-8").read()
-    for badge in (C.VERDICT_LABEL[C.VERDICT_FAIR], C.VERDICT_LABEL[C.VERDICT_SKIP]):
+    for badge in (C.VERDICT_LABEL[C.VERDICT_STRONG], C.VERDICT_LABEL[C.VERDICT_FAIR],
+                  C.VERDICT_LABEL[C.VERDICT_SKIP]):
         assert badge in run_md, f"verdict badge {badge!r} missing from run.md"
-    print("Fair and Skip verdict badges rendered [OK]")
+    print("Strong Buy, Fair and Skip verdict badges rendered [OK]")
 
-    # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00.
-    assert "buy 5 kg = €49.00, saves €11.00" in html_body, \
-        "exact consumable bulk-buy string missing"
+    # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00. The
+    # stock-up clause now LEADS the line, with the literal "Stock up: buy " prefix.
+    assert "Stock up: buy 5 kg = €49.00, saves €11.00" in html_body, \
+        "exact consumable stock-up-first bulk-buy string missing"
     print("Exact consumable bulk-buy string rendered [OK]")
+
+    # At least one consumable in the digest leads with the stock-up clause.
+    assert "Stock up: buy " in html_body, "no consumable line led with the stock-up clause"
+    print("Digest leads with the stock-up clause [OK]")
 
     # Reject footer carries the real EUR/kg-vs-shelf number (chicken breast).
     # €5.80 is p25 of the seeded [5.80, 6.00, 6.20, 6.40] series — the number the
@@ -348,10 +386,9 @@ try:
     print("A shelf evidence leg and regular_median are never granted together [OK]")
 
     # deals_history.json: exactly the emailed set.
-    n_strong = html_body.count(C.VERDICT_LABEL[C.VERDICT_STRONG])
     deals_hist = json.load(open("state/deals_history.json", encoding="utf-8"))
-    assert len(deals_hist["entries"]) == 1, \
-        f"expected 1 emailed deal (salmon Fair), got {len(deals_hist['entries'])}"
+    assert len(deals_hist["entries"]) == 2, \
+        f"expected 2 emailed deals (salmon Fair, whey Strong Buy), got {len(deals_hist['entries'])}"
     print("deals_history.json holds exactly the emailed set [OK]")
 
     # deals_history.json is web/'s ONLY input, and web/ re-renders the numbers itself rather

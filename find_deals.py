@@ -299,10 +299,19 @@ def _score(cand, hist):
     cand["evidence"] = evidence
 
     floor = C.promo_floor(history.stats_for(hist, sku))
+
+    # bulk_qty and saving_eur are computed BEFORE the verdict, because the stock-up floor
+    # is now one of the gates. Left in the old order (saving_eur assigned at the end of
+    # this function) the gate reads None on every single lead, so it never fires — and
+    # the digest looks completely identical, with no error anywhere. saving_eur_for reads
+    # reference_eur, unit_price_eur and bulk_qty; all three are set by this point.
+    cand["bulk_qty"] = sku_cfg.get("bulk_qty")
+    cand["saving_eur"] = C.saving_eur_for(cand)
+
     verdict, discount, failed = C.verdict_consumable(
         cand.get("unit_price_eur"), reference, ref_conf, floor,
-        cand.get("fit_score"), evidence, sku_cfg.get("target_eur"))
-    cand["bulk_qty"] = sku_cfg.get("bulk_qty")
+        cand.get("fit_score"), evidence, sku_cfg.get("target_eur"),
+        saving_eur=cand["saving_eur"])
 
     if cand.get("quality_flag") == "junk" and verdict == C.VERDICT_STRONG:
         verdict = C.VERDICT_SKIP
@@ -311,7 +320,6 @@ def _score(cand, hist):
     cand["verdict"] = verdict
     cand["discount"] = discount
     cand["failed_gates"] = failed
-    cand["saving_eur"] = C.saving_eur_for(cand)
     return cand
 
 
@@ -429,6 +437,9 @@ ITEM_DATA_FIELDS = [
     ("fit_score", lambda c, cfg: c.get("fit_score")),
     ("evidence", lambda c, cfg: c.get("evidence")),
     ("valid_until", lambda c, cfg: c.get("valid_until")),
+    # How long the PRODUCT keeps (not restock_days, which is how long a stock-up LASTS
+    # this household). Rendered in web/'s Drawer as "Keeps ~N days" — see CLAUDE.md.
+    ("shelf_life_days", lambda c, cfg: cfg.get("shelf_life_days")),
 ]
 
 
@@ -474,15 +485,21 @@ def _consumable_line(c):
         head = f"{name} — €{unit_price:.2f}/{unit}"
     else:
         head = f"{name} — €?/{unit}"
-    parts = [head]
+
+    # The stock-up clause leads the line: the whole point of this rewrite is that the
+    # user reads the stock-up framing first, not a per-kilo price. It only fires when
+    # all three inputs are known; otherwise `head` stays first, exactly as before.
+    bulk_total = _bulk_total(c, sku_cfg)
+    parts = []
+    if bulk_qty and unit_price is not None and saving is not None and bulk_total is not None:
+        parts.append(f"Stock up: buy {bulk_qty:g} {unit} = €{bulk_total:.2f}, saves €{saving:.2f}")
+    parts.append(head)
     # A low-confidence reference caps the verdict at Fair, so say so rather than
     # letting the number look more authoritative than it is.
     if c.get("reference_confidence") == C.CONF_LOW:
         parts.append(REFERENCE_CAVEAT.get(level, "low-confidence reference"))
     if sku_cfg.get("target_eur") and unit_price is not None and unit_price <= sku_cfg["target_eur"]:
         parts.append(f"beats your €{sku_cfg['target_eur']:.2f}/{unit} target")
-    if bulk_qty and unit_price is not None and saving is not None:
-        parts.append(f"buy {bulk_qty:g} {unit} = €{unit_price * bulk_qty:.2f}, saves €{saving:.2f}")
     if sku_cfg.get("bulk_note"):
         parts.append(sku_cfg["bulk_note"].rstrip("."))
     if c.get("valid_until"):
@@ -879,7 +896,9 @@ def main():
     seen_state = prune_seen(load_seen())
     for c in audited_candidates:
         c["is_repeat"] = _is_repeat(seen_state, c)
-        c["rank_score"] = C.rank_score(c.get("discount"), c.get("saving_eur"), c.get("verdict"), c["is_repeat"])
+        c["rank_score"] = C.rank_score(
+            c.get("discount"), c.get("saving_eur"), c.get("verdict"), c["is_repeat"],
+            shelf_life_days=(catalog.CATALOG.get(c.get("sku")) or {}).get("shelf_life_days"))
 
     emailable = [c for c in audited_candidates if c.get("verdict") in (C.VERDICT_STRONG, C.VERDICT_FAIR)]
 

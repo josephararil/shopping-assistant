@@ -128,8 +128,8 @@ records which gate each rejected lead died on, and it points at exactly one knob
 | Dominant gate | What it means | What to change |
 |---|---|---|
 | `discount` | the discount rungs are set above what this market does | lower `CONSUMABLE_STRONG_DISCOUNT` |
-| `evidence` | corroboration is under-firing | **raise `MAX_CORROBORATE_PER_RUN`. Do not lower the evidence bar.** |
-| `abs_savings` | the watchlist is full of low-ticket items | prune the catalog |
+| `evidence` | corroboration is under-firing | **raise `MAX_CORROBORATE_PER_RUN`. Do not lower the evidence bar.** But first check how many of those leads *also* carry `stockup_value` — corroboration only fires on leads failing evidence **alone**, so raising the cap will not reach them |
+| `stockup_value` | the watchlist holds items whose bulk saving is under `STOCKUP_MIN_SAVING_EUR` | prune them, raise their `bulk_qty` to what the household really buys, or lower the floor if it is genuinely too strict |
 | `near_floor` | the market routinely beats the observed reference | nothing to tune — the reference is already what shops charge |
 | `fit` | the watchlist holds things the household does not want | prune the catalog |
 | `low_confidence_reference` | too many skus mix product grades | split them; the email's Catalog maintenance block names exactly which ones |

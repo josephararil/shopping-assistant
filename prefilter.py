@@ -15,6 +15,7 @@ docstring (lines 12-44) for the offer/candidate shape this binds to.
 ONE public function: prefilter(offers, today, baselines=None) -> (candidates, rejects, stats)
 """
 
+import catalog
 import config as C
 
 # Six reject reasons, first rule wins:
@@ -34,6 +35,27 @@ def _reference_for(offer, baselines):
         return None
     reference, _level, _conf = C.reference_for(offer, baselines.get(offer.get("sku")))
     return reference
+
+
+def _target_hit(offer):
+    """True when this offer's unit price is at or below the sku's own `target_eur`.
+
+    A `target_eur` is a PROMOTE-ONLY pre-commitment the user named themselves, so it
+    bypasses Stage 2's reference check exactly as it bypasses every Stage-6 gate. Without
+    this bypass the rejection is INVISIBLE: Stage 2 runs before any verdict exists, so
+    nothing errors and no failed_gate is recorded — the offer is simply absent from the
+    digest. Measured 2026-07-31 on supp.whey_protein (target_eur 25.00/kg): against an
+    18.00/kg L2 baseline, PREFILTER_REFERENCE_SLACK x 18.00 = 20.70, so a 24.00/kg offer
+    was rejected `over_reference` here while verdict_consumable would have returned
+    Strong Buy. Latent rather than fired, only because whey currently has no observed
+    shelf history to build an L2 reference from.
+
+    Bounded by the target, deliberately: this is a bypass, not a loosening of
+    PREFILTER_REFERENCE_SLACK. A cent above the target and the normal rule applies."""
+    target_eur = (catalog.CATALOG.get(offer.get("sku")) or {}).get("target_eur")
+    unit_price = offer.get("unit_price_eur")
+    return (target_eur is not None and unit_price is not None
+            and unit_price <= target_eur)
 
 
 def _reject_reason(offer, today, baselines):
@@ -59,7 +81,7 @@ def _reject_reason(offer, today, baselines):
         reference = _reference_for(offer, baselines)
         unit_price = offer.get("unit_price_eur")
         offer["reference_eur"] = reference
-        if (reference and unit_price is not None
+        if (reference and unit_price is not None and not _target_hit(offer)
                 and unit_price > reference * C.PREFILTER_REFERENCE_SLACK):
             return "over_reference"
 
@@ -68,7 +90,13 @@ def _reject_reason(offer, today, baselines):
 
 def _attractiveness(offer, baselines):
     """Cap-fill ordering key, descending: how far under the observed reference this
-    offer's unit price sits."""
+    offer's unit price sits.
+
+    A `target_eur` hit sorts FIRST, unconditionally. It survived _reject_reason on the
+    user's own pre-commitment, so letting the cap-fill drop it later would reinstate the
+    same invisible loss the bypass exists to close."""
+    if _target_hit(offer):
+        return float("inf")
     reference = _reference_for(offer, baselines)
     unit_price = offer.get("unit_price_eur")
     if not reference or unit_price is None:

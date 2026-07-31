@@ -343,12 +343,20 @@ const REFERENCE_LABEL = {
   llm_reference: "an estimated reference",
 };
 
-// Consumable bulk line:
-// "€9.80/kg vs €12.00 the Lidl shelf p25 (18% under) · buy 5 kg = €49.00, saves €11.00"
+// Consumable bulk line — the stock-up clause leads, so the reader sees the stock-up
+// framing before a per-kilo price:
+// "Stock up: buy 5 kg = €49.00, saves €11.00 · €9.80/kg vs €12.00 the Lidl shelf p25 (18% under)"
 function consumableLine(e) {
   const up = fmt2(e.unit_price_eur);
   if (!up) return null;
   const suffix = unitSuffix(e.unit);
+  const parts = [];
+  // bulk_total_eur, not price_eur: price_eur is the PACK price, and the pipeline computes
+  // the stock-up total (unit price x bulk qty) so no arithmetic happens in here.
+  if (e.qty != null && e.bulk_total_eur != null && e.saving_eur != null) {
+    const qty = Number.isInteger(e.qty) ? `${e.qty}` : e.qty.toFixed(2);
+    parts.push(`Stock up: buy ${qty} ${e.unit || ""} = €${fmt2(e.bulk_total_eur)}, saves €${fmt2(e.saving_eur)}`);
+  }
   let s = `€${up}${suffix}`;
   if (e.reference_eur != null) {
     const ref = fmt2(e.reference_eur);
@@ -356,16 +364,11 @@ function consumableLine(e) {
     const label = REFERENCE_LABEL[e.reference_level] || "reference";
     s += ` vs €${ref} ${label}${pct ? ` (${pct} under)` : ""}`;
   }
+  parts.push(s);
   if (e.target_eur != null && e.unit_price_eur != null && e.unit_price_eur <= e.target_eur) {
-    s += ` · beats your €${fmt2(e.target_eur)}${suffix} target`;
+    parts.push(`beats your €${fmt2(e.target_eur)}${suffix} target`);
   }
-  // bulk_total_eur, not price_eur: price_eur is the PACK price, and the pipeline computes
-  // the stock-up total (unit price x bulk qty) so no arithmetic happens in here.
-  if (e.qty != null && e.bulk_total_eur != null && e.saving_eur != null) {
-    const qty = Number.isInteger(e.qty) ? `${e.qty}` : e.qty.toFixed(2);
-    s += ` · buy ${qty} ${e.unit || ""} = €${fmt2(e.bulk_total_eur)}, saves €${fmt2(e.saving_eur)}`;
-  }
-  return s;
+  return parts.join(" · ");
 }
 
 function DealCard({ entry: e, index, onOpen }) {
@@ -489,6 +492,10 @@ function Drawer({ entry: e, onClose }) {
         )}
 
         {e.bulk_advice && <div className="d-note"><b>Bulk advice:</b> {e.bulk_advice}</div>}
+
+        {e.shelf_life_days != null && (
+          <div className="d-note">Keeps ~{e.shelf_life_days} days</div>
+        )}
 
         {e.market_insight && <p className="d-about">{e.market_insight}</p>}
 
