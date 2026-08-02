@@ -51,15 +51,15 @@ import os
 # ── LLM models ──────────────────────────────────────────────────────────────
 # Per-stage model roles. Values are canonical Anthropic model names; Gemini
 # equivalents are looked up in GEMINI_MODEL_MAP below.
-MODEL_DISCOVER    = "claude-sonnet-4-6"   # Stage 3: search-capable lead generation
-MODEL_AUDIT       = "claude-sonnet-4-6"   # Stage 4: the procurement audit, no search
-MODEL_CORROBORATE = "claude-sonnet-4-6"   # Stage 5: search-capable reference hunting
+MODEL_DISCOVER    = "claude-haiku"   # Stage 3: search-capable lead generation
+MODEL_AUDIT       = "claude-haiku"   # Stage 4: the procurement audit, no search
+MODEL_CORROBORATE = "claude-haiku"   # Stage 5: search-capable reference hunting
 
 # Maps Anthropic model names (canonical keys) to Gemini equivalents.
 # Used when LLM_PROVIDER=gemini. Add a new entry here whenever a new model role
 # is added; never hard-code Gemini model names anywhere else.
 GEMINI_MODEL_MAP = {
-    "claude-haiku-4-5-20251001": "gemini-flash-latest",
+    "claude-haiku": "gemini-flash-latest",
     "claude-sonnet-4-6":         "gemini-pro-latest",
 }
 
