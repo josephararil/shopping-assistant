@@ -1,15 +1,15 @@
 {
   "skus": {
     "food.salmon_fillet": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.chicken_breast": {
-      "runs_since_matched": 1,
-      "last_matched": "2026-07-31"
+      "runs_since_matched": 0,
+      "last_matched": "2026-08-02"
     },
     "food.olive_oil": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.coffee_beans": {
@@ -17,8 +17,8 @@
       "last_matched": null
     },
     "supp.whey_protein": {
-      "runs_since_matched": 1,
-      "last_matched": "2026-07-31"
+      "runs_since_matched": 0,
+      "last_matched": "2026-08-02"
     },
     "house.laundry_gel": {
       "runs_since_matched": 2,
@@ -26,23 +26,23 @@
     },
     "food.pork_meat": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "food.beef_mince": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.turkey_breast": {
-      "runs_since_matched": 3,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-08-02"
     },
     "food.white_fish": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.rice": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "food.pasta": {
       "runs_since_matched": 2,
@@ -65,19 +65,19 @@
       "last_matched": "2026-07-31"
     },
     "food.oats": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.tomatoes_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.tuna_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.sweetcorn_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.butter": {
@@ -85,24 +85,24 @@
       "last_matched": "2026-07-31"
     },
     "food.cheese_hard": {
-      "runs_since_matched": 1,
-      "last_matched": "2026-07-31"
+      "runs_since_matched": 0,
+      "last_matched": "2026-08-02"
     },
     "food.kashkaval": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "food.milk": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "food.yoghurt": {
       "runs_since_matched": 0,
       "last_matched": "2026-07-31"
     },
     "food.eggs": {
-      "runs_since_matched": 3,
-      "last_matched": null
+      "runs_since_matched": 0,
+      "last_matched": "2026-08-02"
     },
     "food.sunflower_oil": {
       "runs_since_matched": 2,
@@ -113,7 +113,7 @@
       "last_matched": null
     },
     "food.honey": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.walnuts": {
@@ -125,7 +125,7 @@
       "last_matched": null
     },
     "food.frozen_vegetables": {
-      "runs_since_matched": 3,
+      "runs_since_matched": 4,
       "last_matched": null
     },
     "food.tea": {
@@ -146,7 +146,7 @@
     },
     "house.toilet_paper": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "house.kitchen_roll": {
       "runs_since_matched": 2,
@@ -249,35 +249,35 @@
       "last_matched": null
     },
     "food.coffee_ground": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.sausages": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     },
     "food.couscous": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.peas_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.chickpeas_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.beans_tinned": {
-      "runs_since_matched": 0,
+      "runs_since_matched": 1,
       "last_matched": "2026-07-31"
     },
     "food.cottage_cheese": {
       "runs_since_matched": 0,
-      "last_matched": "2026-07-31"
+      "last_matched": "2026-08-02"
     },
     "food.lutenitsa": {
-      "runs_since_matched": 1,
+      "runs_since_matched": 2,
       "last_matched": null
     }
   }

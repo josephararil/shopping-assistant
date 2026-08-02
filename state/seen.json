@@ -1,21 +1,21 @@
 {
   "seen": {
     "food.kashkaval|41": {
-      "d": "2026-07-31",
+      "d": "2026-08-02",
       "retailer": "Lidl",
       "verdict": "Fair",
       "ttl_days": 45,
       "price": 7.75
     },
     "food.cottage_cheese|23": {
-      "d": "2026-07-31",
+      "d": "2026-08-02",
       "retailer": "Lidl",
       "verdict": "Fair",
       "ttl_days": 21,
       "price": 3.18
     },
     "food.rice|6": {
-      "d": "2026-07-31",
+      "d": "2026-08-02",
       "retailer": "Lidl",
       "verdict": "Fair",
       "ttl_days": 180,
@@ -41,6 +41,48 @@
       "verdict": "Fair",
       "ttl_days": 90,
       "price": 0.3187
+    },
+    "house.toilet_paper|-25": {
+      "d": "2026-08-02",
+      "retailer": "Kaufland",
+      "verdict": "Fair",
+      "ttl_days": 90,
+      "price": 0.2995
+    },
+    "supp.whey_protein|63": {
+      "d": "2026-08-02",
+      "retailer": "silabg",
+      "verdict": "Strong Buy",
+      "ttl_days": 300,
+      "price": 22.5
+    },
+    "food.chicken_breast|18": {
+      "d": "2026-08-02",
+      "retailer": "Billa Bulgaria",
+      "verdict": "Strong Buy",
+      "ttl_days": 60,
+      "price": 2.49
+    },
+    "food.pork_meat|22": {
+      "d": "2026-08-02",
+      "retailer": "Billa Bulgaria",
+      "verdict": "Fair",
+      "ttl_days": 75,
+      "price": 2.99
+    },
+    "food.milk|6": {
+      "d": "2026-08-02",
+      "retailer": "Billa Bulgaria",
+      "verdict": "Fair",
+      "ttl_days": 30,
+      "price": 1.39
+    },
+    "food.eggs|-30": {
+      "d": "2026-08-02",
+      "retailer": "Billa Bulgaria",
+      "verdict": "Fair",
+      "ttl_days": 30,
+      "price": 0.239
     }
   },
   "weekly_count": {}
