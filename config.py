@@ -666,7 +666,8 @@ MAX_PROMPT_OUTCOMES = 10   # recent ledger outcomes injected into {memory}
 
 # ── Email ───────────────────────────────────────────────────────────────────
 TOP_N_BLOCK       = 5    # "Top 5 of the week", repeat-free, across retailers
-MAX_REJECT_LINES  = 40   # one-line reject footer, then a count for the rest
+MAX_REJECT_SUMMARY_LINES = 6    # aggregated reject groups in the digest footer, then an overflow line
+MAX_MAINTENANCE_LINES    = 5    # wide-spread sku warnings in the digest footer, then an overflow line
 CATALOG_STALE_RUNS = 8   # runs_since_matched at which a sku is surfaced as a bad rule
 
 # Email only when strong_buy + fair >= this. Otherwise write state and exit.
@@ -805,8 +806,8 @@ Do NOT output a price per kilo, per litre or per piece. Do NOT reason about "per
 
 **3. Contextual Fit — output `fit_score`, 0-100.**
 
-**4. Logistics / Utility — output `bulk_advice` and `red_flags`.**
-Shelf life, freezer and storage reality, whether the bulk quantity is genuinely usable before it spoils, and the opportunity cost of the cash and the space.
+**4. Logistics / Utility — output `action_note` and `storage_note`.**
+Shelf life, freezer and storage reality, whether the bulk quantity is genuinely usable before it spoils, and the opportunity cost of the cash and the space — compressed into the two notes below.
 
 ### HOW YOUR fit_score IS USED (read carefully — it changes how you should score)
 `fit_score` measures NET HOUSEHOLD VALUE DELIVERED — how much this specific household genuinely gets out of owning this item. It is NOT prestige, NOT luxury, and NOT the size of the discount.
@@ -832,13 +833,13 @@ You do not decide the verdict. You do not tier. You cannot kill an offer. Score 
 ### `quality_flag` — the one lever you have
 `quality_flag` is `ok` or `junk`. `junk` means the product itself is genuinely bad — a fake or misrepresented item, a dangerous one, or a brand that is a known quality disaster. It is ONE-WAY: it can demote a Strong Buy to Skip, and can never promote anything. It is not for "I don't think they need this" (that is fit_score) and not for "the discount looks fake" (that is trap_detected).
 
-### PROSE FOR THE HUMAN (descriptive only)
-`the_math` — actual versus perceived savings, in plain numbers, e.g. "The 30% off is calculated from a 4.99 EUR price this product has not sold at since spring; against the real 3.60 EUR shelf price you save 0.11 EUR, not 1.50 EUR."
-`about` — what this product is, for someone who does not know the brand.
-`value_case` — 1-3 sentences a savvy shopper would say out loud about whether this is worth buying.
-`market_insight` — does this product see deeper discounts in a specific Bulgarian seasonal cycle? Worth waiting?
+### THE TWO NOTES FOR THE HUMAN — BE BRUTALLY SHORT
+You output exactly two short notes. They are read on a phone, in a scannable card, next to the numbers. They are DESCRIPTIVE ONLY: they must not move `fit_score` and they gate nothing.
 
-These four fields are DESCRIPTIVE ONLY. They must not move `fit_score` and they gate nothing. Do not invent named facts, certifications or origins you do not actually know.
+`action_note` — MAXIMUM 15 WORDS. The recommendation: how many to buy, and the one reason the price justifies it. Example: "Stock up 4 packs (60 rolls). Standard 3-ply at a genuine floor price."
+`storage_note` — MAXIMUM 15 WORDS. The logistics: shelf life, freezing, space, packaging. Example: "Bulky. Freeze in 250 g blocks; keeps two months."
+
+Write NO brand history, NO general background, NO origin stories, NO paragraphs. A note over 15 words is wrong even if every word is true. Do not invent named facts, certifications or origins you do not actually know. If you have nothing useful for a note, write one short honest clause rather than padding.
 
 ### PRIOR RUNS (calibrate to these)
 {memory}
@@ -860,12 +861,8 @@ Return JSON only. No markdown fences. The root MUST be a bare JSON array startin
     "trap_detected": "none",
     "fit_score": 88,
     "quality_flag": "ok",
-    "the_math": "Perceived saving 40%; against the real 8.99 EUR normal price the saving is 2.10 EUR per pack, 22%.",
-    "about": "Farmed Norwegian salmon, skin-on fillet portions.",
-    "value_case": "At this price it is worth buying the freezer full; it has not been under 10 EUR/kg since January.",
-    "market_insight": "Salmon discounts deepen around Orthodox fasting periods and pre-Christmas.",
-    "bulk_advice": "Portion into 400 g bags and freeze; keeps 3 months.",
-    "red_flags": "Check the packing date — this chain often promotes stock close to its sell-by."
+    "action_note": "Buy 5 kg. Cheapest since January and freezes well.",
+    "storage_note": "Portion into 400 g bags and freeze; keeps three months."
   }}
 ]"""
 
@@ -958,16 +955,11 @@ STAGE_AUDIT_SCHEMA = {
                                              "bundle_padding"]},
             "fit_score":           {"type": "integer"},
             "quality_flag":        {"type": "string", "enum": ["ok", "junk"]},
-            "the_math":            {"type": "string"},
-            "about":               {"type": "string"},
-            "value_case":          {"type": "string"},
-            "market_insight":      {"type": "string"},
-            "bulk_advice":         {"type": "string"},
-            "red_flags":           {"type": "string"},
+            "action_note":         {"type": "string"},
+            "storage_note":        {"type": "string"},
         },
         "required": ["lead_id", "reference_price_eur", "ref_confidence", "trap_detected",
-                     "fit_score", "quality_flag", "the_math", "about", "value_case",
-                     "bulk_advice", "red_flags"],
+                     "fit_score", "quality_flag", "action_note", "storage_note"],
     },
 }
 
