@@ -10,12 +10,12 @@ Runs the real pipeline (find_deals.main()) in a throwaway temp directory with:
 Fixtures (see OFFERS below):
   - Lidl salmon fillet promo at 9.80 EUR/kg with NO seeded shelf series -> falls to the
     L3 llm_reference at 12.00 EUR/kg -> Fair (18% under, below
-    the 20% Strong-Buy discount rung) -> exercises the exact
-    "buy 5 kg = 49.00 EUR, saves 11.00 EUR" consumable line. Its audited value_case also
-    carries the HTML-escaping payload (<script> and "Ben & Jerry's").
+    the 20% Strong-Buy discount rung) -> exercises the Tier-1 card's deal-price cell
+    ("for 5 kg" / "€49.00") and its low-confidence savings cell. Its audited action_note
+    also carries the HTML-escaping payload (<script> and "Ben & Jerry's").
   - Lidl chicken breast promo at 9.00 EUR/kg vs a 6.00 EUR/kg observed shelf p25 ->
     rejected `over_reference` at Stage 2, before any LLM sees it -> exercises the
-    reject footer's real EUR/kg-vs-shelf-price line.
+    aggregated reject summary's real EUR/kg-vs-shelf-price line.
   - An olive oil promo with an unparseable pack size -> the audit never recovers a usable
     unit price -> quarantined -> exercises "never enters price_history".
   - A Lidl REGULAR row for the same salmon sku -> recorded into the `regular` series with
@@ -183,32 +183,23 @@ _AUDIT_BY_SKU = {
         "reference_price_eur": 12.0, "ref_confidence": "high",
         "ref_comparators": "matches the household's own par", "trap_detected": "none",
         "fit_score": 88, "quality_flag": "ok",
-        "the_math": "18% under par; not yet at the 20% Strong-Buy rung.",
-        "about": "Norwegian salmon fillet.",
-        "value_case": "Ben & Jerry's <script>alert(1)</script> good a deal as it gets at this price.",
-        "market_insight": "Deeper dips appear around Orthodox fasting periods.",
-        "bulk_advice": "Portion into 400 g bags and freeze.", "red_flags": "none",
+        "action_note": "Buy 5 kg. <script>alert(1)</script> Ben & Jerry's cheap.",
+        "storage_note": "Freeze in 400 g bags; keeps three months.",
     },
     "food.olive_oil": {
         # Deliberately NO pack_qty/pack_unit -> pending_qty stays True -> quarantined.
         "reference_price_eur": 9.0, "ref_confidence": "low",
         "ref_comparators": "insufficient data", "trap_detected": "none",
         "fit_score": 50, "quality_flag": "ok",
-        "the_math": "Pack size could not be confirmed from the listing.",
-        "about": "Extra virgin olive oil.",
-        "value_case": "Cannot judge value until the pack size is confirmed.",
-        "market_insight": "", "bulk_advice": "",
-        "red_flags": "Confirm pack size before buying.",
+        "action_note": "Hold off until the pack size is confirmed.",
+        "storage_note": "Long shelf life once the size is known.",
     },
     "supp.whey_protein": {
         "reference_price_eur": 30.0, "ref_confidence": "high",
         "ref_comparators": "matches the Amazon.de Bulk-brand price history", "trap_detected": "none",
         "fit_score": 90, "quality_flag": "ok",
-        "the_math": "32.9% under the observed Lidl shelf reference; clears the stock-up floor.",
-        "about": "Whey protein powder, Bulk brand.",
-        "value_case": "A genuine annual-cycle price drop, comfortably under target.",
-        "market_insight": "Deepest drops cluster around New Year fitness season.",
-        "bulk_advice": "Buy the full tub; sealed shelf life is 18-24 months.", "red_flags": "none",
+        "action_note": "Buy now — a genuine annual-cycle price drop.",
+        "storage_note": "Sealed tub keeps 18-24 months; store cool and dry.",
     },
 }
 
@@ -261,19 +252,15 @@ try:
     assert _email, "send_email was never called — no Strong Buy/Fair reached email"
     html_body, text_body = _email["html"], _email["text"]
 
-    # Retailer sections appear in catalog.RETAILER_ORDER order (Lidl before Amazon.de).
-    # The olive-oil lead on Amazon.de is quarantined to a Skip verdict — unparseable
-    # pack size — so it never emails, but the new whey-protein lead (also Amazon.de,
-    # see OFFERS) reaches Strong Buy and gives Amazon.de a section to order against.
-    assert "Lidl" in html_body and "Amazon.de" in html_body, "expected Lidl and Amazon.de sections"
-    assert html_body.index(">Lidl<") < html_body.index(">Amazon.de<"), \
-        "retailer sections must follow catalog.RETAILER_ORDER (Lidl before Amazon.de)"
-    print("Retailer sections ordered per catalog.RETAILER_ORDER [OK]")
+    # Both retailers' leads reach the digest somewhere (Lidl salmon, Amazon.de whey).
+    # The olive-oil lead is quarantined (unparseable pack size) and never emails.
+    assert "Lidl" in html_body and "Amazon.de" in html_body, "expected Lidl and Amazon.de somewhere in the digest"
+    print("Both retailers represented in the digest [OK]")
 
-    # Top-5 present and repeat-free (no seen state existed before this run).
-    assert f"Top {C.TOP_N_BLOCK}" in html_body, "Top-N block header missing"
+    # Tier-1 present and repeat-free (no seen state existed before this run).
+    assert "TOP DEALS (" in html_body, "Tier-1 block header missing"
     assert "(repeat)" not in html_body, "first-ever run must have no repeats"
-    print("Top-5 block present and repeat-free [OK]")
+    print("Tier-1 block present and repeat-free [OK]")
 
     # Strong Buy, Fair and Skip verdict badges all render somewhere in the run log.
     # Strong Buy was previously only exercised by the Sony trigger-hit fixture, removed
@@ -286,22 +273,38 @@ try:
         assert badge in run_md, f"verdict badge {badge!r} missing from run.md"
     print("Strong Buy, Fair and Skip verdict badges rendered [OK]")
 
-    # Exact consumable line: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00. The
-    # stock-up clause now LEADS the line, with the literal "Stock up: buy " prefix.
-    assert "Stock up: buy 5 kg = €49.00, saves €11.00" in html_body, \
-        "exact consumable stock-up-first bulk-buy string missing"
-    print("Exact consumable bulk-buy string rendered [OK]")
+    # Exact metric-box numbers: salmon at 9.80 EUR/kg, bulk_qty=5, reference 12.00 (L3,
+    # low confidence) -> deal price cell "€49.00" ("for 5 kg"), savings cell "€11.00*"
+    # (the "*" is the low-confidence marker), sub-line "18% vs €12.00/kg".
+    assert "for 5 kg" in html_body and "€49.00" in html_body, \
+        "deal-price cell (bulk total + qty) missing for the salmon card"
+    assert "€11.00*" in html_body, "low-confidence savings must carry the '*' marker"
+    assert "18% vs €12.00/kg" in html_body, "savings sub-line must name the reference it beat"
+    print("Tier-1 metric-box numbers rendered exactly [OK]")
 
-    # At least one consumable in the digest leads with the stock-up clause.
-    assert "Stock up: buy " in html_body, "no consumable line led with the stock-up clause"
-    print("Digest leads with the stock-up clause [OK]")
+    # Reject summary carries the real EUR/kg-vs-shelf number (chicken breast), aggregated
+    # as "N x reason" rather than one raw line per reject. €5.80 is p25 of the seeded
+    # [5.80, 6.00, 6.20, 6.40] series — the number the rejection was ACTUALLY measured
+    # against, spelled out so the summary cannot drift into printing a plausible-looking
+    # different one.
+    assert "1 x over_reference: Пилешко филе 1 кг (€9.00/kg vs €5.80/kg shelf)" in html_body, \
+        "reject summary must carry the real EUR/kg-vs-shelf number for the sole over_reference reject"
+    print("Reject summary carries a real EUR/kg-vs-shelf-price number [OK]")
 
-    # Reject footer carries the real EUR/kg-vs-shelf number (chicken breast).
-    # €5.80 is p25 of the seeded [5.80, 6.00, 6.20, 6.40] series — the number the
-    # rejection was ACTUALLY measured against, spelled out so the footer cannot drift
-    # into printing a plausible-looking different one.
-    assert "over_reference: €9.00/kg vs €5.80/kg observed shelf price" in html_body, \
-    print("Reject footer carries a real EUR/kg-vs-shelf-price number [OK]")
+    # ONE-PASS: the old digest rendered Top-5 and then re-rendered every emailable item
+    # grouped by retailer, so the best five deals appeared twice by construction. An item
+    # must now appear exactly once. "Сьомга" (salmon) is the distinguishing substring of
+    # the salmon fixture's Cyrillic name and appears nowhere else in this fixture set.
+    assert html_body.count("Сьомга") == 1, \
+        f"each deal must appear exactly once in the HTML digest, saw {html_body.count('Сьомга')}"
+    assert text_body.count("Сьомга") == 1, \
+        f"each deal must appear exactly once in the text digest, saw {text_body.count('Сьомга')}"
+    print("No deal is rendered twice [OK]")
+
+    # The reject footer must be aggregated as 'N x reason', not one line per reject.
+    assert re.search(r"\d+ x \w+", text_body), \
+        "the reject footer must be aggregated as 'N x reason', not one line per reject"
+    print("Reject footer is aggregated, not one line per reject [OK]")
 
     # Source report includes the FAILED mydealz source.
     assert "mydealz" in html_body and "FAILED" in html_body, "FAILED source report missing"
@@ -416,14 +419,16 @@ try:
         "pack price and stock-up total must stay distinct fields"
     print("bulk_total_eur is the stock-up total, distinct from the pack price [OK]")
 
-    # the_math is required by STAGE_AUDIT_SCHEMA and the prompt teaches it with a worked
-    # example; it used to be absent from ITEM_BLOCKS, so it was paid for every run and
-    # rendered in neither the email nor web/.
-    assert salmon.get("the_math"), "the_math must reach deals_history.json"
-    the_math = "not yet at the 20% Strong-Buy rung"
-    assert the_math in html_body, "the_math must render in the email HTML"
-    assert the_math in text_body, "the_math must render in the email text part"
-    print("the_math reaches both the email and deals_history.json [OK]")
+    # The two notes are the ONLY audit prose now, and both must reach the email and the
+    # history entry. `the_math` and the four other prose fields were retired: they are
+    # still emitted as "" by find_deals.LEGACY_WEB_FIELDS purely so web/src/App.jsx (out
+    # of scope) keeps satisfying the grep contract below.
+    assert salmon.get("action_note"), "action_note must reach deals_history.json"
+    assert salmon.get("storage_note"), "storage_note must reach deals_history.json"
+    assert salmon.get("the_math") == "", "retired prose fields must be emitted empty, not filled"
+    assert "Freeze in 400 g bags" in html_body, "storage_note must render in the email HTML"
+    assert "Freeze in 400 g bags" in text_body, "storage_note must render in the email text part"
+    print("both audit notes reach the email and deals_history.json [OK]")
 
     # last_run.json: non-empty failed_gates histogram (calibration instrument).
     last_run = json.load(open("state/last_run.json", encoding="utf-8"))
@@ -453,19 +458,16 @@ try:
         "maintenance fired on a tight spread — BASELINE_MAX_SPREAD is not being applied"
     print("Catalog maintenance reports a wide spread, ignores promo and tight series [OK]")
 
-    # Every emailed consumable says WHICH reference produced its verdict. A discount with
-    # no visible denominator is exactly the unauditable claim this rewrite removes.
-    labels = [v for v in fd.REFERENCE_LABEL.values() if v in html_body]
-    assert labels, ("no reference level rendered in the digest — a discount with no "
-                    "visible denominator is the unauditable claim this rewrite removes")
-    # Salmon has no seeded shelf series, so it must land on L3 and SAY SO, including its
-    # Fair cap. If it silently used the audit's number as though it were an observed
-    # shelf price, this is the assertion that notices.
-    assert "an estimated reference" in html_body, \
-        f"expected the L3 label for a sku with no shelf history; got {labels}"
+    # Every emailed consumable on a low-confidence reference says so. A discount with no
+    # visible caveat is exactly the unauditable claim this rewrite removes. Salmon has no
+    # seeded shelf series, so it must land on L3 and disclose it, including its Fair cap —
+    # if it silently used the audit's number as though it were an observed shelf price,
+    # this is the assertion that notices.
+    assert "no shelf price observed yet" in html_body, \
+        "an L3 reference must disclose it is an LLM estimate, not a shelf price"
     assert "capped at Fair" in html_body, \
         "an L3 reference must announce its Fair ceiling, not just its number"
-    print(f"Digest names the reference level behind each consumable verdict {labels} [OK]")
+    print("Digest discloses the low-confidence reference caveat for the L3-referenced consumable [OK]")
 
     print("\nAll assertions passed.")
 finally:
