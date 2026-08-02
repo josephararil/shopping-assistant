@@ -338,6 +338,28 @@ sku warnings the same way, with the stale-sku catalog-health list folded into th
 one joined line rather than one line per sku, to hold the digest's own ≤15-line-typical footer
 budget. Both replace `MAX_REJECT_LINES`, which is deleted.
 
+### `target_note` is folded into `action_note`, never its own line
+The first production digest rendered "beats your €25.00/kg target" as a standalone line below
+the card, disconnected from the buying recommendation it actually qualifies. `_metrics()` now
+prepends it directly onto `action_note` before either renderer sees it — the two-note card
+(Invariant TWO-NOTES above) still gets exactly two bullets, just with the target match folded
+into the first one. `target_note` itself is still returned from `_metrics()` for `_headline()`'s
+sake (deals_history's legacy headline field); it is simply no longer rendered a second time.
+
+### A Stage-3 discover lead's `sku` is model-assigned, not text-matched — and must still clear the catalog veto
+`match_sku()`'s `none` prefix veto (see catalog.py's matching-rules docstring) only ever runs
+for deterministic-feed offers, which are matched onto a sku by scanning their name. A
+`llm_discover` lead is the opposite shape: Stage 3 hands the model a specific gap sku to search
+for (`food.milk — UHT milk (1 L)`), and `_offer_from_discover` accepts whatever `sku` the model
+echoes back as the search target — it never runs `match_sku` at all, so the veto that would
+catch a mislabeled result never fires. Measured live: the model returned "Прясно мляко" (fresh
+milk) tagged `food.milk`, a sku that is UHT-only by design (see PR-B above) specifically because
+fresh milk cannot be stocked up on. The label text alone told the model the constraint; nothing
+enforced it. `match.violates_veto(name, sku)` reuses the same prefix-veto rule against the
+lead's own name and is now called explicitly in the `discover_offers` loop before a lead is kept
+— any other sku with a `none` list (smoked salmon/pork, baby purée rice, carrot peas, etc.) gets
+the same protection on the discover path that it already had on deterministic feeds.
+
 ### A reasoning model that is UNAVAILABLE falls down a tier; a model that REJECTS us does not
 `gemini-pro-latest` returned sustained HTTP 503 "experiencing high demand" on 2026-07-31, killing
 Stage 3 and stalling Stage 4 — the run produced nothing while each stage ground through its retry
