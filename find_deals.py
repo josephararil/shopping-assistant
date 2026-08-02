@@ -201,12 +201,8 @@ def _apply_audit(cand, v):
     cand["ref_comparators"] = v.get("ref_comparators", "")
     cand["trap_detected"] = v.get("trap_detected", "none")
     cand["quality_flag"] = v.get("quality_flag", "ok")
-    cand["the_math"] = v.get("the_math", "")
-    cand["about"] = v.get("about", "")
-    cand["value_case"] = v.get("value_case", "")
-    cand["market_insight"] = v.get("market_insight", "")
-    cand["bulk_advice"] = v.get("bulk_advice", "")
-    cand["red_flags"] = v.get("red_flags", "")
+    cand["action_note"] = v.get("action_note", "")
+    cand["storage_note"] = v.get("storage_note", "")
 
     cand["quarantine"] = bool(cand.get("sku_class") == "consumable" and cand.get("unit_price_eur") is None)
 
@@ -387,25 +383,24 @@ def prune_deals_history(state):
     return state
 
 
-def _top5(emailable):
-    fresh = [c for c in emailable if not c.get("is_repeat")]
-    fresh.sort(key=lambda c: -(c.get("rank_score") or 0))
-    return fresh[:C.TOP_N_BLOCK]
-
-
 # ── Item rendering — ONE ordered list consumed by html / text / history ─────
 
 ITEM_BLOCKS = [
-    ("about", lambda c: c.get("about") or ""),
-    ("value_case", lambda c: c.get("value_case") or ""),
-    # the_math is the audit's headline arithmetic — perceived vs actual saving. It is a
-    # required field of STAGE_AUDIT_SCHEMA and the prompt spends a worked example on it,
-    # so leaving it out of this list paid for it every run and rendered it nowhere.
-    ("the_math", lambda c: c.get("the_math") or ""),
-    ("market_insight", lambda c: c.get("market_insight") or ""),
-    ("bulk_advice", lambda c: c.get("bulk_advice") or ""),
-    ("red_flags", lambda c: c.get("red_flags") or ""),
+    ("action_note", lambda c: c.get("action_note") or ""),
+    ("storage_note", lambda c: c.get("storage_note") or ""),
 ]
+
+# Retired audit prose. web/src/App.jsx still reads these six keys, and test_stub.py greps
+# that file and asserts every `e.<field>` it reads is present in a deals_history entry.
+# App.jsx is deliberately out of scope for this change, so the keys are emitted EMPTY:
+# App.jsx guards each render with `&&`, so "" renders nothing instead of crashing.
+# REMOVE THIS LIST when App.jsx is migrated to action_note / storage_note.
+LEGACY_WEB_FIELDS = ["the_math", "about", "value_case", "market_insight",
+                     "bulk_advice", "red_flags"]
+
+# Plain-text badge for the card header. C.VERDICT_LABEL carries emoji ("✅ Strong Buy"),
+# which is wrong inside a "[ ... ]" badge and unreliable in text/plain.
+VERDICT_BADGE = {C.VERDICT_STRONG: "STRONG BUY", C.VERDICT_FAIR: "FAIR"}
 
 # The STRUCTURED half of the item contract, as ITEM_BLOCKS is the prose half. The email
 # renders numbers via _headline(), but web/ re-renders them itself and so needs them as
@@ -443,15 +438,9 @@ ITEM_DATA_FIELDS = [
 ]
 
 
-# How each reference level reads to a human. The email must say WHICH number a discount
-# was measured against — "30% off" against a guessed par and against a statutory shelf
-# price are not the same claim, and the whole point of this rewrite is that the user can
-# tell them apart.
-REFERENCE_LABEL = {
-    C.REF_OWN_SHELF:    "its own Lidl shelf price",
-    C.REF_CATEGORY_P25: "the Lidl shelf p25",
-    C.REF_LLM:          "an estimated reference",
-}
+# Read by _metrics() for the low-confidence caveat line: a low-confidence reference caps
+# the verdict at Fair, so the digest says why rather than letting the number look more
+# authoritative than it is.
 REFERENCE_CAVEAT = {
     C.REF_CATEGORY_P25: "capped at Fair — this sku mixes product grades, so its p25 is "
                         "not like-for-like",
@@ -469,46 +458,78 @@ def _bulk_total(c, sku_cfg):
     return round(unit_price * bulk_qty, 2)
 
 
-def _consumable_line(c):
+def _metrics(c):
+    """The single site that formats every number in the email. Returns strings only, so
+    the HTML and text renderers consume the same values and cannot quietly disagree."""
     sku_cfg = catalog.CATALOG.get(c.get("sku")) or {}
-    name = c.get("name") or sku_cfg.get("label") or c.get("sku") or "?"
     unit = c.get("unit") or sku_cfg.get("unit") or "kg"
-    unit_price, discount = c.get("unit_price_eur"), c.get("discount")
-    ref, level = c.get("reference_eur"), c.get("reference_level")
-    bulk_qty, saving = sku_cfg.get("bulk_qty"), c.get("saving_eur")
-
-    if unit_price is not None and ref is not None:
-        pct = f"{round(discount * 100)}% under" if discount is not None else "?"
-        head = (f"{name} — €{unit_price:.2f}/{unit} vs €{ref:.2f} "
-                f"{REFERENCE_LABEL.get(level, 'reference')} ({pct})")
-    elif unit_price is not None:
-        head = f"{name} — €{unit_price:.2f}/{unit}"
-    else:
-        head = f"{name} — €?/{unit}"
-
-    # The stock-up clause leads the line: the whole point of this rewrite is that the
-    # user reads the stock-up framing first, not a per-kilo price. It only fires when
-    # all three inputs are known; otherwise `head` stays first, exactly as before.
+    bulk_qty = sku_cfg.get("bulk_qty")
     bulk_total = _bulk_total(c, sku_cfg)
-    parts = []
-    if bulk_qty and unit_price is not None and saving is not None and bulk_total is not None:
-        parts.append(f"Stock up: buy {bulk_qty:g} {unit} = €{bulk_total:.2f}, saves €{saving:.2f}")
-    parts.append(head)
-    # A low-confidence reference caps the verdict at Fair, so say so rather than
-    # letting the number look more authoritative than it is.
-    if c.get("reference_confidence") == C.CONF_LOW:
-        parts.append(REFERENCE_CAVEAT.get(level, "low-confidence reference"))
-    if sku_cfg.get("target_eur") and unit_price is not None and unit_price <= sku_cfg["target_eur"]:
-        parts.append(f"beats your €{sku_cfg['target_eur']:.2f}/{unit} target")
-    if sku_cfg.get("bulk_note"):
-        parts.append(sku_cfg["bulk_note"].rstrip("."))
-    if c.get("valid_until"):
-        parts.append(f"valid to {_fmt_date(c['valid_until'])}")
-    return " · ".join(parts)
+    price_eur = c.get("price_eur")
+    unit_price_eur = c.get("unit_price_eur")
+    reference_eur = c.get("reference_eur")
+    saving_eur = c.get("saving_eur")
+    discount = c.get("discount")
+    verdict = c.get("verdict")
+    level = c.get("reference_level")
+    low_conf = c.get("reference_confidence") == C.CONF_LOW
+
+    if bulk_total is not None:
+        deal_price, deal_price_sub = f"€{bulk_total:.2f}", f"for {bulk_qty:g} {unit}"
+    elif price_eur is not None:
+        deal_price, deal_price_sub = f"€{price_eur:.2f}", "per pack"
+    else:
+        deal_price, deal_price_sub = "—", ""
+
+    unit_price = f"€{unit_price_eur:.2f} / {unit}" if unit_price_eur is not None else "—"
+
+    savings_label = "EST. SAVINGS" if low_conf else "SAVINGS"
+    savings = (f"€{saving_eur:.2f}" + ("*" if low_conf else "")) if saving_eur is not None else "—"
+
+    if discount is not None and reference_eur is not None:
+        savings_sub = f"{round(discount * 100)}% vs €{reference_eur:.2f}/{unit}"
+    else:
+        savings_sub = ""
+
+    caveat = REFERENCE_CAVEAT.get(level, "") if low_conf else ""
+
+    target_note = ""
+    target_eur = sku_cfg.get("target_eur")
+    if target_eur and unit_price_eur is not None and unit_price_eur <= target_eur:
+        target_note = f"beats your €{target_eur:.2f}/{unit} target"
+
+    return {
+        "name": c.get("name") or sku_cfg.get("label") or c.get("sku") or "?",
+        "retailer": c.get("retailer") or "—",
+        "badge": VERDICT_BADGE.get(verdict, ""),
+        "color": C.VERDICT_COLOR.get(verdict, "#333"),
+        "valid": _fmt_date(c.get("valid_until")) or "Shelf stock",
+        "deal_price": deal_price,
+        "deal_price_sub": deal_price_sub,
+        "unit_price": unit_price,
+        "savings_label": savings_label,
+        "savings": savings,
+        "savings_sub": savings_sub,
+        "caveat": caveat,
+        "target_note": target_note,
+        "url": c.get("url") or "",
+        "action_note": c.get("action_note") or "",
+        "storage_note": c.get("storage_note") or "",
+    }
 
 
 def _headline(c):
-    return _consumable_line(c)
+    m = _metrics(c)
+    parts = [f"{m['name']} — {m['unit_price']}"]
+    if m["deal_price"] != "—":
+        parts.append(f"stock up {m['deal_price_sub']} = {m['deal_price']}, saves {m['savings']}")
+    if m["savings_sub"]:
+        parts.append(m["savings_sub"])
+    if m["caveat"]:
+        parts.append(m["caveat"])
+    if m["target_note"]:
+        parts.append(m["target_note"])
+    return " · ".join(parts)
 
 
 def _item_dict(c):
@@ -520,6 +541,8 @@ def _item_dict(c):
     }
     for key, fn in ITEM_BLOCKS:
         d[key] = fn(c)
+    for key in LEGACY_WEB_FIELDS:
+        d[key] = ""
     for key, fn in ITEM_DATA_FIELDS:
         d[key] = fn(c, sku_cfg)
     return d
@@ -535,55 +558,193 @@ def build_history_entries(items, today):
 
 
 def _render_item_html(c):
-    d = _item_dict(c)
-    badge = C.VERDICT_LABEL.get(d["verdict"], d["verdict"] or "")
-    color = C.VERDICT_COLOR.get(d["verdict"], "#333")
-    if d["is_repeat"]:
-        return (f"<div style='padding:4px 0;font-size:13px;color:#999'>"
-                f"<b style='color:{color}'>{_esc(badge)}</b> {_esc(d['headline'])} (repeat)</div>")
-    lines = [
-        f"<div style='padding:10px 0;border-bottom:1px solid #eee'>"
-        f"<div style='font-size:12px;font-weight:bold;color:{color}'>{_esc(badge)}</div>"
-        f"<div style='font-size:15px;font-weight:bold'>{_esc(d['headline'])}</div>"
+    """Tier-1 card: badge, name, store/valid line, a metric box, the ≤2 note bullets
+    (Invariant TWO-NOTES — enforced by iterating ITEM_BLOCKS, never naming a key), and a
+    styled CTA button."""
+    m = _metrics(c)
+    cells = [
+        ("DEAL PRICE", m["deal_price"], m["deal_price_sub"]),
+        ("UNIT PRICE", m["unit_price"], ""),
+        (m["savings_label"], m["savings"], m["savings_sub"]),
     ]
-    for key, _fn in ITEM_BLOCKS:
-        if d.get(key):
-            lines.append(f"<div style='font-size:13px;color:#555;margin:2px 0'>{_esc(d[key])}</div>")
-    if d.get("url"):
-        lines.append(f"<div style='font-size:12px'><a href='{_safe_url(d['url'])}'>link</a></div>")
+    cells_html = "".join(
+        f"<td style='padding:8px;border:1px solid #dee2e6;text-align:center;width:33%;vertical-align:top'>"
+        f"<div style='font-size:10px;color:#6c757d;letter-spacing:.5px'>{_esc(label)}</div>"
+        f"<div style='font-size:14px;font-weight:bold;color:#212529'>{_esc(value)}</div>"
+        f"<div style='font-size:11px;color:#6c757d'>{_esc(sub)}</div></td>"
+        for label, value, sub in cells
+    )
+    lines = [
+        "<div style='border:1px solid #dee2e6;border-radius:6px;padding:12px;margin:0 0 14px 0'>",
+        f"<div style='font-size:12px;font-weight:bold;color:{m['color']}'>[ {_esc(m['badge'])} ]</div>",
+        f"<div style='font-size:16px;font-weight:bold;margin:2px 0'>{_esc(m['name'])}</div>",
+        f"<div style='font-size:12px;color:#6c757d;margin-bottom:8px'>Store: {_esc(m['retailer'])} | Valid: {_esc(m['valid'])}</div>",
+        f"<table style='border-collapse:collapse;background:#f8f9fa;border:1px solid #dee2e6;width:100%'><tr>{cells_html}</tr></table>",
+    ]
+    if m["caveat"]:
+        lines.append(f"<div style='font-size:11px;color:#8a6d00;margin-top:6px'>* {_esc(m['caveat'])}</div>")
+    for i, (key, _fn) in enumerate(ITEM_BLOCKS):
+        value = m.get(key)
+        if not value:
+            continue
+        label = key.split("_")[0].upper()
+        style = "font-size:13px;color:#333;margin-top:6px" if i == 0 else "font-size:13px;color:#333"
+        lines.append(f"<div style='{style}'>&bull; <b>{label}:</b> {_esc(value)}</div>")
+    if m["target_note"]:
+        lines.append(f"<div style='font-size:12px;color:#0a7d2e;margin-top:4px'>{_esc(m['target_note'])}</div>")
+    if m["url"]:
+        lines.append(
+            f"<a href='{_safe_url(m['url'])}' style='display:inline-block;background:{m['color']};"
+            f"color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:4px;"
+            f"font-size:14px;font-weight:bold;margin-top:10px'>&#10142; BUY ON {_esc(m['retailer'].upper())}</a>"
+        )
     lines.append("</div>")
     return "".join(lines)
 
 
 def _render_item_text(c):
-    d = _item_dict(c)
-    badge = C.VERDICT_LABEL.get(d["verdict"], d["verdict"] or "")
-    if d["is_repeat"]:
-        return f"[{badge}] {d['headline']} (repeat)"
-    lines = [f"[{badge}] {d['headline']}"]
-    for key, _fn in ITEM_BLOCKS:
-        if d.get(key):
-            lines.append(d[key])
-    if d.get("url"):
-        lines.append(d["url"])
+    """Tier-1 card, text/plain. Lines whose value is unknown ("—"/"") are omitted rather
+    than printed empty."""
+    m = _metrics(c)
+    lines = [
+        f"[ {m['badge']} ] {m['name']}",
+        f"Store: {m['retailer']} | Valid: {m['valid']}",
+    ]
+    if m["deal_price"] != "—":
+        lines.append(f"• Deal Price:   {m['deal_price']} ({m['deal_price_sub']})")
+    if m["unit_price"] != "—":
+        lines.append(f"• Unit Price:   {m['unit_price']}")
+    savings_label_titled = "Est. Savings" if m["savings_label"] == "EST. SAVINGS" else "Savings"
+    if m["savings"] != "—":
+        sub = f" ({m['savings_sub']})" if m["savings_sub"] else ""
+        lines.append(f"• {savings_label_titled}: {m['savings']}{sub}")
+    if m["caveat"]:
+        lines.append(f"* {m['caveat']}")
+    if m["action_note"]:
+        lines.append(f"• Action:       {m['action_note']}")
+    if m["storage_note"]:
+        lines.append(f"• Storage:      {m['storage_note']}")
+    if m["target_note"]:
+        lines.append(f"• {m['target_note']}")
+    if m["url"]:
+        lines.append(f"Link: {m['url']}")
     return "\n".join(lines)
 
 
-def _reject_footer_lines(rejects):
-    lines = []
+def _tier2_pct(c):
+    return round(c["discount"] * 100) if c.get("discount") is not None else None
+
+
+def _render_tier2_text(c):
+    m, pct = _metrics(c), _tier2_pct(c)
+    line = f"[{m['badge']}] {m['name']} — {m['unit_price']}"
+    if m["deal_price"] != "—":
+        line += f" ({m['deal_price']} total)"
+    if m["savings_sub"] and pct is not None:
+        line += f" | Saves {pct}% @ {m['retailer']}"
+    if c.get("is_repeat"):
+        line += " (repeat)"
+    if m["url"]:
+        line += f" -> {m['url']}"
+    return line
+
+
+def _render_tier2_html(c):
+    m, pct = _metrics(c), _tier2_pct(c)
+    text = f"[{_esc(m['badge'])}] {_esc(m['name'])} — {_esc(m['unit_price'])}"
+    if m["deal_price"] != "—":
+        text += f" ({_esc(m['deal_price'])} total)"
+    if m["savings_sub"] and pct is not None:
+        text += f" | Saves {pct}% @ {_esc(m['retailer'])}"
+    if c.get("is_repeat"):
+        text += " (repeat)"
+    if m["url"]:
+        text += f" <a href='{_safe_url(m['url'])}'>view</a>"
+    return f"<div style='font-size:13px;padding:3px 0;border-bottom:1px solid #f1f3f5'>{text}</div>"
+
+
+def _dedupe_emailable(items):
+    """Collapse to one item per (sku or lowercased name), keeping the highest rank_score.
+    Ties break on first-seen order; input order is otherwise preserved for survivors."""
+    best = {}
+    order = []
+    for c in items:
+        key = c.get("sku") or (c.get("name") or "").strip().lower()
+        if key not in best:
+            best[key] = c
+            order.append(key)
+        elif (c.get("rank_score") or 0) > (best[key].get("rank_score") or 0):
+            best[key] = c
+    return [best[key] for key in order]
+
+
+def _tier(emailable):
+    """Partition the deduped emailable list into (tier1, tier2). Every item appears
+    exactly once (Invariant ONE-PASS). Repeats are demoted to tier2, never hidden."""
+    repeats = [c for c in emailable if c.get("is_repeat")]
+    fresh = [c for c in emailable if not c.get("is_repeat")]
+    strong = sorted((c for c in fresh if c["verdict"] == C.VERDICT_STRONG),
+                     key=lambda c: -(c.get("rank_score") or 0))
+    fair = sorted((c for c in fresh if c["verdict"] == C.VERDICT_FAIR),
+                   key=lambda c: -(c.get("rank_score") or 0))
+    tier1 = strong + fair[:max(0, C.TOP_N_BLOCK - len(strong))]
+    tier2 = fair[max(0, C.TOP_N_BLOCK - len(strong)):] + sorted(
+        repeats, key=lambda c: -(c.get("rank_score") or 0))
+    return tier1, tier2
+
+
+def _reject_summary_lines(rejects):
+    """Group rejects by reason, most-frequent first, capped at C.MAX_REJECT_SUMMARY_LINES
+    lines rather than one line per reject."""
+    groups = {}
+    order = []
     for o in rejects:
         reason = o.get("reject_reason")
-        name = o.get("name") or o.get("sku") or "?"
-        if reason == "over_reference" and o.get("sku_class") == "consumable":
-            sku_cfg = catalog.CATALOG.get(o.get("sku")) or {}
-            ref, up = o.get("reference_eur"), o.get("unit_price_eur")
-            unit = o.get("unit") or sku_cfg.get("unit") or "kg"
-            if up is not None and ref is not None:
-                lines.append(f"{name} — over_reference: €{up:.2f}/{unit} vs "
-                             f"€{ref:.2f}/{unit} observed shelf price")
-                continue
-        lines.append(f"{name} — {reason}")
+        if reason not in groups:
+            groups[reason] = []
+            order.append(reason)
+        groups[reason].append(o)
+
+    reasons_sorted = sorted(order, key=lambda r: (-len(groups[r]), r or ""))
+    lines = []
+    for reason in reasons_sorted[:C.MAX_REJECT_SUMMARY_LINES]:
+        items = groups[reason]
+        n = len(items)
+        if n == 1:
+            o = items[0]
+            name = o.get("name") or o.get("sku") or "?"
+            if reason == "over_reference" and o.get("sku_class") == "consumable":
+                sku_cfg = catalog.CATALOG.get(o.get("sku")) or {}
+                ref, up = o.get("reference_eur"), o.get("unit_price_eur")
+                unit = o.get("unit") or sku_cfg.get("unit") or "kg"
+                if up is not None and ref is not None:
+                    lines.append(f"1 x over_reference: {name} (€{up:.2f}/{unit} vs €{ref:.2f}/{unit} shelf)")
+                    continue
+            lines.append(f"1 x {reason}: {name}")
+        else:
+            names = []
+            for o in items[:3]:
+                name = o.get("name") or o.get("sku") or "?"
+                if len(name) > 28:
+                    name = name[:28] + "…"
+                names.append(name)
+            examples = ", ".join(names)
+            if n > 3:
+                examples += ", etc."
+            lines.append(f"{n} x {reason} ({examples})")
+    if len(reasons_sorted) > C.MAX_REJECT_SUMMARY_LINES:
+        lines.append(f"... and {len(reasons_sorted) - C.MAX_REJECT_SUMMARY_LINES} more reason(s)")
     return lines
+
+
+def _source_report_line(reports):
+    parts = []
+    for r in reports:
+        part = f"{r.get('source')}: {'OK' if r.get('ok') else 'FAILED'} (n={r.get('n')})"
+        if not r.get("ok"):
+            part += f" — {r.get('note')}"
+        parts.append(part)
+    return " | ".join(parts)
 
 
 def maintenance_lines(hist):
@@ -623,22 +784,6 @@ def maintenance_lines(hist):
     return lines
 
 
-def _retailer_sort_key(r):
-    try:
-        return (0, catalog.RETAILER_ORDER.index(r))
-    except ValueError:
-        return (1, r or "")
-
-
-def _grouped_by_retailer(items):
-    by_retailer = {}
-    for c in items:
-        by_retailer.setdefault(c.get("retailer") or "Other", []).append(c)
-    for group in by_retailer.values():
-        group.sort(key=lambda c: (0 if c.get("verdict") == C.VERDICT_STRONG else 1, -(c.get("rank_score") or 0)))
-    return sorted(by_retailer.items(), key=lambda kv: _retailer_sort_key(kv[0]))
-
-
 _CAVEATS_HTML = (
     "<div style='font-size:11px;color:#bbb;margin-top:16px'>"
     "Lidl prices are for Plovdiv-area stores only. Discovered leads come from live web "
@@ -652,70 +797,84 @@ _CAVEATS_TEXT = (
 )
 
 
-def build_email_html(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
-    top5_html = "".join(_render_item_html(c) for c in top5)
-    retailer_html = "".join(
-        f"<h3>{_esc(retailer)}</h3>" + "".join(_render_item_html(c) for c in items)
-        for retailer, items in _grouped_by_retailer(emailable)
+def build_email_html(subject, tier1, tier2, rejects, reports, stale, today, maintenance=()):
+    n_strong = sum(1 for c in tier1 + tier2 if c["verdict"] == C.VERDICT_STRONG)
+    n_fair = sum(1 for c in tier1 + tier2 if c["verdict"] == C.VERDICT_FAIR)
+
+    tier1_html = "".join(_render_item_html(c) for c in tier1)
+
+    tier2_block = ""
+    if tier2:
+        tier2_html = "".join(_render_tier2_html(c) for c in tier2)
+        tier2_block = f"<h3 style='font-size:14px'>OTHER QUALIFIED DEALS ({len(tier2)})</h3>{tier2_html}"
+
+    reject_html = "".join(
+        f"<div style='font-size:12px;color:#999'>{_esc(l)}</div>" for l in _reject_summary_lines(rejects)
     )
 
-    reject_lines = _reject_footer_lines(rejects)[:C.MAX_REJECT_LINES]
-    reject_html = "".join(f"<div style='font-size:12px;color:#999'>{_esc(l)}</div>" for l in reject_lines)
-    if len(rejects) > len(reject_lines):
-        reject_html += f"<div style='font-size:12px;color:#999'>... and {len(rejects) - len(reject_lines)} more</div>"
+    maint_lines = list(maintenance[:C.MAX_MAINTENANCE_LINES])
+    if len(maintenance) > C.MAX_MAINTENANCE_LINES:
+        maint_lines.append(f"... and {len(maintenance) - C.MAX_MAINTENANCE_LINES} more")
+    if stale:
+        maint_lines.append(f"stale (no match in {C.CATALOG_STALE_RUNS}+ runs): {', '.join(stale)}")
+    maint_block = ""
+    if maint_lines:
+        maint_html = "".join(f"<div style='font-size:12px;color:#a15c00'>{_esc(l)}</div>" for l in maint_lines)
+        maint_block = f"<h4>Catalog maintenance</h4>{maint_html}"
 
-    report_html = "".join(
-        f"<div style='font-size:12px;color:{'#c00' if not r.get('ok') else '#999'}'>"
-        f"{_esc(r.get('source'))}: {'FAILED' if not r.get('ok') else 'ok'} n={r.get('n')} {_esc(r.get('note') or '')}</div>"
-        for r in reports
-    )
-    health_html = "".join(
-        f"<div style='font-size:12px;color:#a15c00'>{_esc(s)}: no match in {C.CATALOG_STALE_RUNS}+ runs</div>"
-        for s in stale
-    )
-    maint_html = "".join(
-        f"<div style='font-size:12px;color:#a15c00'>{_esc(l)}</div>" for l in maintenance
-    )
-    maint_block = f"<h3>Catalog maintenance</h3>{maint_html}" if maint_html else ""
+    source_html = f"<div style='font-size:12px;color:#999'>{_esc(_source_report_line(reports))}</div>"
 
     return (
         f"<div style='font-family:system-ui,sans-serif;max-width:640px;padding:8px'>"
-        f"<h2 style='margin-bottom:4px'>{_esc(subject)}</h2>"
-        f"<h3>Top {C.TOP_N_BLOCK}</h3>{top5_html}"
-        f"{retailer_html}"
-        f"<h3>Also seen &amp; rejected ({len(rejects)} total)</h3>{reject_html}"
-        f"<h3>Source report</h3>{report_html}"
-        f"<h3>Catalog health</h3>{health_html}"
-        f"{maint_block}"
+        f"<h2 style='margin:0 0 2px 0;font-size:18px'>WEEKLY SHOPPING HUNT | {_esc(today)}</h2>"
+        f"<div style='font-size:13px;color:#6c757d;margin-bottom:14px'>"
+        f"Summary: {n_strong} Strong Buy &middot; {n_fair} Fair &middot; {len(rejects)} Rejected</div>"
+        f"<h3 style='font-size:14px'>TOP DEALS ({len(tier1)})</h3>{tier1_html}"
+        f"{tier2_block}"
+        f"<h3 style='font-size:14px'>SYSTEM LOGS &amp; PIPELINE HEALTH</h3>"
+        f"<h4>REJECTED LEADS ({len(rejects)} total)</h4>{reject_html}"
+        f"<h4>CATALOG WARNINGS</h4>{maint_block}"
+        f"<h4>SOURCE STATUS</h4>{source_html}"
         f"{_CAVEATS_HTML}"
         f"</div>"
     )
 
 
-def build_email_text(subject, top5, emailable, rejects, reports, stale, today, maintenance=()):
-    parts = [subject, "", f"Top {C.TOP_N_BLOCK}:"]
-    parts += [_render_item_text(c) for c in top5]
-    for retailer, items in _grouped_by_retailer(emailable):
-        parts.append(f"\n{retailer}:")
-        parts += [_render_item_text(c) for c in items]
+def build_email_text(subject, tier1, tier2, rejects, reports, stale, today, maintenance=()):
+    n_strong = sum(1 for c in tier1 + tier2 if c["verdict"] == C.VERDICT_STRONG)
+    n_fair = sum(1 for c in tier1 + tier2 if c["verdict"] == C.VERDICT_FAIR)
 
-    reject_lines = _reject_footer_lines(rejects)[:C.MAX_REJECT_LINES]
-    parts.append(f"\nAlso seen & rejected ({len(rejects)} total):")
-    parts += reject_lines
-    if len(rejects) > len(reject_lines):
-        parts.append(f"... and {len(rejects) - len(reject_lines)} more")
+    parts = [
+        f"WEEKLY SHOPPING HUNT | {today}",
+        f"Summary: {n_strong} Strong Buy · {n_fair} Fair · {len(rejects)} Rejected",
+        "",
+        f"TOP DEALS ({len(tier1)})",
+    ]
+    for c in tier1:
+        parts.append(_render_item_text(c))
+        parts.append("")
 
-    parts.append("\nSource report:")
-    for r in reports:
-        parts.append(f"{r.get('source')}: {'FAILED' if not r.get('ok') else 'ok'} n={r.get('n')} {r.get('note') or ''}")
+    if tier2:
+        parts.append(f"OTHER QUALIFIED DEALS ({len(tier2)})")
+        parts += [_render_tier2_text(c) for c in tier2]
+        parts.append("")
 
-    parts.append("\nCatalog health:")
-    for s in stale:
-        parts.append(f"{s}: no match in {C.CATALOG_STALE_RUNS}+ runs")
+    parts.append(f"{'=' * 20} SYSTEM LOGS & PIPELINE HEALTH {'=' * 20}")
+    parts.append(f"REJECTED LEADS ({len(rejects)} total)")
+    parts += _reject_summary_lines(rejects)
 
-    if maintenance:
-        parts.append("\nCatalog maintenance:")
-        parts += list(maintenance)
+    maint_lines = list(maintenance[:C.MAX_MAINTENANCE_LINES])
+    if len(maintenance) > C.MAX_MAINTENANCE_LINES:
+        maint_lines.append(f"... and {len(maintenance) - C.MAX_MAINTENANCE_LINES} more")
+    if stale:
+        maint_lines.append(f"stale (no match in {C.CATALOG_STALE_RUNS}+ runs): {', '.join(stale)}")
+    parts.append("CATALOG WARNINGS")
+    if maint_lines:
+        parts.append("Catalog maintenance")
+        parts += maint_lines
+
+    parts.append("SOURCE STATUS")
+    parts.append(_source_report_line(reports))
 
     parts.append("\n" + _CAVEATS_TEXT)
     return "\n".join(parts)
@@ -887,10 +1046,10 @@ def main():
     _section("STAGE 6 · VERDICT")
     for c in audited_candidates:
         _score(c, hist)  # forced re-score, reflects any Stage-5 change
-    n_strong = sum(1 for c in audited_candidates if c["verdict"] == C.VERDICT_STRONG)
-    n_fair = sum(1 for c in audited_candidates if c["verdict"] == C.VERDICT_FAIR)
-    n_skip = len(audited_candidates) - n_strong - n_fair
-    print(f"  {n_strong} Strong Buy · {n_fair} Fair · {n_skip} Skip")
+    raw_strong = sum(1 for c in audited_candidates if c["verdict"] == C.VERDICT_STRONG)
+    raw_fair = sum(1 for c in audited_candidates if c["verdict"] == C.VERDICT_FAIR)
+    n_skip = len(audited_candidates) - raw_strong - raw_fair
+    print(f"  {raw_strong} Strong Buy · {raw_fair} Fair · {n_skip} Skip")
 
     _section("STAGE 7 · DIGEST + STATE")
     seen_state = prune_seen(load_seen())
@@ -900,7 +1059,15 @@ def main():
             c.get("discount"), c.get("saving_eur"), c.get("verdict"), c["is_repeat"],
             shelf_life_days=(catalog.CATALOG.get(c.get("sku")) or {}).get("shelf_life_days"))
 
-    emailable = [c for c in audited_candidates if c.get("verdict") in (C.VERDICT_STRONG, C.VERDICT_FAIR)]
+    # Duplicates collapse here, at the single seam feeding the digest — write_run_md's
+    # Strong/Fair counts below now reflect the deduped set, and a dropped duplicate is
+    # never passed to mark_seen (safe: the seen key is the sku, not the retailer, so the
+    # surviving twin marks the same key).
+    emailable = _dedupe_emailable(
+        [c for c in audited_candidates if c.get("verdict") in (C.VERDICT_STRONG, C.VERDICT_FAIR)])
+
+    n_strong = sum(1 for c in emailable if c["verdict"] == C.VERDICT_STRONG)
+    n_fair = sum(1 for c in emailable if c["verdict"] == C.VERDICT_FAIR)
 
     failed_hist = {}
     for c in audited_candidates:
@@ -930,10 +1097,10 @@ def main():
     sent_items = []
     if n_strong + n_fair >= C.MIN_ITEMS_TO_EMAIL:
         subject = f"Weekly Shopping Hunt — {n_strong} Strong Buy · {n_fair} Fair · {today}"
-        top5 = _top5(emailable)
-        html_body = build_email_html(subject, top5, emailable, stage2_rejects + discover_rejects,
+        tier1, tier2 = _tier(emailable)
+        html_body = build_email_html(subject, tier1, tier2, stage2_rejects + discover_rejects,
                                       reports, stale, today, maintenance)
-        text_body = build_email_text(subject, top5, emailable, stage2_rejects + discover_rejects,
+        text_body = build_email_text(subject, tier1, tier2, stage2_rejects + discover_rejects,
                                       reports, stale, today, maintenance)
         if C.DRY_RUN:
             print(f"  [DRY RUN] would send: {subject}")
