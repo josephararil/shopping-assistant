@@ -310,6 +310,22 @@ def match_sku(offer):
     return None, None, None
 
 
+def violates_veto(name, sku):
+    """True if `name`'s tokens trip the given sku's own `none` prefix veto.
+
+    match_sku() applies this automatically for deterministic feeds, but Stage-3
+    llm_discover leads are assigned their sku directly by the model (the search target,
+    not a text match), so they never pass through match_sku at all — a discovered
+    "Прясно мляко" listing for food.milk (UHT-only) sails through with nothing to catch
+    it. Call this explicitly wherever a sku is asserted without going through match_sku.
+    """
+    none_words = ((catalog.CATALOG.get(sku) or {}).get("match", {})).get("none", [])
+    if not none_words:
+        return False
+    toks = tokens(name or "")
+    return any(tok.startswith(nw) for tok in toks for nw in none_words)
+
+
 def _qty_from_net(net_qty, expected_unit):
     """-> (qty, unit) from a source-declared net quantity, or (None, None).
 
