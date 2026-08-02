@@ -283,7 +283,7 @@ fields, so the entry needs both halves: `ITEM_BLOCKS` (prose) **and** `ITEM_DATA
 
 This drifted once and failed invisibly: 15 of the 26 fields App.jsx reads were never emitted, so
 every card rendered with no price and no score ring, the `sku_class` filter matched nothing, and
-`the_math` — a `required` field of `STAGE_AUDIT_SCHEMA` that the prompt teaches with a worked
+`the_math` — then a `required` field of `STAGE_AUDIT_SCHEMA` that the prompt taught with a worked
 example — was paid for every run and displayed nowhere. Nothing caught it because `test_stub.py`
 asserted the *count* of entries, not their *shape*.
 
@@ -295,6 +295,48 @@ field to App.jsx, that test tells you to emit it.
 `unit_price x bulk_qty`; `price_eur` is the PACK price. Passing `price_eur` through rendered
 "buy 5 kg = €9.80" instead of €49.00 — wrong in a way that looks entirely plausible, which is why
 it has its own assertion. Python owns all arithmetic, in the UI's numbers too.
+
+### The audit's prose is exactly two capped notes, not six unbounded fields
+`ITEM_BLOCKS` used to hold six fields — `the_math`, `about`, `value_case`, `market_insight`,
+`bulk_advice`, `red_flags` — each an unbounded string the audit prompt invited the model to fill
+with brand background. Read on a phone, in a scannable card, six paragraphs of prose *was* the
+spam vector this pipeline exists to reject, just moved one stage downstream of the discount gates
+instead of caught by them. `STAGE_AUDIT_SCHEMA` now carries exactly two: `action_note` (the
+recommendation — how many to buy, and the one reason the price justifies it) and `storage_note`
+(the logistics — shelf life, freezing, space, packaging), both capped at 15 words in the prompt.
+`ITEM_BLOCKS` having exactly two entries, with both renderers iterating it rather than naming a
+key, is Invariant TWO-NOTES: hardcoding `d["action_note"]` and `d["storage_note"]` would render
+identically today and silently un-cap the count the next time a field is added.
+
+**`LEGACY_WEB_FIELDS` is a shim, not a feature.** `web/src/App.jsx` is out of scope for the digest
+rewrite that retired the six fields, and it still reads all six by name — the grep contract above
+would fail without them. `find_deals.LEGACY_WEB_FIELDS` emits `the_math`/`about`/`value_case`/
+`market_insight`/`bulk_advice`/`red_flags` as `""` (never a fabricated value: App.jsx's `&&` guards
+render nothing on an empty string rather than crash on a missing key). **Remove the shim only when
+App.jsx migrates to `action_note`/`storage_note`** — filling those keys with `action_note`'s text
+in the meantime would make old App.jsx cards look alive while showing the wrong prose in the wrong
+slot. *Owed: migrate `web/src/App.jsx` to read `action_note`/`storage_note` and drop
+`LEGACY_WEB_FIELDS`.*
+
+### Invariant ONE-PASS: every emailed deal renders exactly once
+The digest's duplication was structural, not a data bug: `build_email_html` rendered the Top-N
+block, then re-rendered the *full* emailable list again, grouped by retailer — the best deals were
+printed twice by construction, and a longer, fuller-looking email was the visible symptom. The fix
+partitions the deduped `emailable` list into `tier1` (every Strong Buy, plus Fair up to
+`TOP_N_BLOCK`) and `tier2` (a dense one-line-per-deal block for the rest) via `find_deals._tier`,
+and `_dedupe_emailable` collapses same-sku/same-name duplicates (keeping the highest `rank_score`)
+at the single seam feeding both. `_top5`, `_grouped_by_retailer` and `_retailer_sort_key` are gone.
+A dropped duplicate is never passed to `mark_seen` — safe, because the seen key is the sku, not the
+retailer (see above), so the surviving twin marks the same key.
+
+### The diagnostics footer is aggregated and capped, not one line per reject
+A 70-reject run used to print ~70 near-identical `no_sku_match` lines. `_reject_summary_lines`
+groups rejects by reason, most-frequent first, capped at `MAX_REJECT_SUMMARY_LINES` (6) with an
+overflow line for the rest — a genuinely informative single reject still gets its own EUR/kg-vs-
+shelf line, per the `over_reference` special case. `MAX_MAINTENANCE_LINES` (5) caps the wide-spread
+sku warnings the same way, with the stale-sku catalog-health list folded into that same block as
+one joined line rather than one line per sku, to hold the digest's own ≤15-line-typical footer
+budget. Both replace `MAX_REJECT_LINES`, which is deleted.
 
 ### A reasoning model that is UNAVAILABLE falls down a tier; a model that REJECTS us does not
 `gemini-pro-latest` returned sustained HTTP 503 "experiencing high demand" on 2026-07-31, killing
