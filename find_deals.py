@@ -498,6 +498,13 @@ def _metrics(c):
     if target_eur and unit_price_eur is not None and unit_price_eur <= target_eur:
         target_note = f"beats your €{target_eur:.2f}/{unit} target"
 
+    # Folded into action_note rather than left as its own floating line — a
+    # pre-commitment match is part of the buying recommendation, not a separate fact.
+    action_note = c.get("action_note") or ""
+    if target_note:
+        prefix = target_note[0].upper() + target_note[1:]
+        action_note = f"{prefix}. {action_note}".strip()
+
     return {
         "name": c.get("name") or sku_cfg.get("label") or c.get("sku") or "?",
         "retailer": c.get("retailer") or "—",
@@ -513,7 +520,7 @@ def _metrics(c):
         "caveat": caveat,
         "target_note": target_note,
         "url": c.get("url") or "",
-        "action_note": c.get("action_note") or "",
+        "action_note": action_note,
         "storage_note": c.get("storage_note") or "",
     }
 
@@ -590,8 +597,6 @@ def _render_item_html(c):
         label = key.split("_")[0].upper()
         style = "font-size:13px;color:#333;margin-top:6px" if i == 0 else "font-size:13px;color:#333"
         lines.append(f"<div style='{style}'>&bull; <b>{label}:</b> {_esc(value)}</div>")
-    if m["target_note"]:
-        lines.append(f"<div style='font-size:12px;color:#0a7d2e;margin-top:4px'>{_esc(m['target_note'])}</div>")
     if m["url"]:
         lines.append(
             f"<a href='{_safe_url(m['url'])}' style='display:inline-block;background:{m['color']};"
@@ -624,8 +629,6 @@ def _render_item_text(c):
         lines.append(f"• Action:       {m['action_note']}")
     if m["storage_note"]:
         lines.append(f"• Storage:      {m['storage_note']}")
-    if m["target_note"]:
-        lines.append(f"• {m['target_note']}")
     if m["url"]:
         lines.append(f"Link: {m['url']}")
     return "\n".join(lines)
@@ -957,6 +960,7 @@ def main():
         discover_offers_raw = []
 
     discover_offers = []
+    n_vetoed = 0
     for o in discover_offers_raw:
         if not isinstance(o, dict):
             continue
@@ -964,9 +968,17 @@ def main():
         price = o.get("price_eur")
         if not cfg or not isinstance(price, (int, float)) or price <= 0:
             continue
+        # The model is told a sku's label ("UHT milk (1 L)") but is not itself the
+        # veto check — it is ASSIGNED the sku as its search target rather than
+        # text-matched onto it, so it never passes through match_sku's own `none`
+        # veto. Apply that veto here explicitly, or a discovered "Прясно мляко"
+        # listing sails through as food.milk (UHT-only) with nothing to catch it.
+        if match.violates_veto(o.get("name"), o.get("sku")):
+            n_vetoed += 1
+            continue
         discover_offers.append(_offer_from_discover(o, o.get("sku"), cfg))
     print(f"  {len(discover_offers_raw)} lead(s) returned -> {len(discover_offers)} valid "
-          f"(known sku + positive price)")
+          f"(known sku + positive price, {n_vetoed} vetoed by catalog match rules)")
 
     discover_candidates, discover_rejects, discover_stats = prefilter.prefilter(
         discover_offers, today, baselines)
