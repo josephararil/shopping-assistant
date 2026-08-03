@@ -1439,6 +1439,167 @@
       "fit_score": null,
       "rank_score": null,
       "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "food.coffee_ground",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Oro Мляно кафе",
+      "price_eur": 2.95,
+      "unit_price_eur": 11.8,
+      "reference_eur": 15.96,
+      "reference_level": "own_shelf",
+      "reference_confidence": "high",
+      "reference_price_eur": 3.99,
+      "discount": 0.2606516290726817,
+      "saving_eur": 20.8,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "own_shelf",
+        "retailer_claim"
+      ],
+      "verdict": "Strong Buy",
+      "failed_gates": [],
+      "reject_reason": null,
+      "fit_score": 80,
+      "rank_score": 42.57,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "food.chicken_breast",
+      "retailer": "Metro",
+      "source": "llm_discover",
+      "name": "Пилешко филе от гърди прясно",
+      "price_eur": 4.29,
+      "unit_price_eur": 4.29,
+      "reference_eur": 6.13,
+      "reference_level": "category_p25",
+      "reference_confidence": "high",
+      "reference_price_eur": 6.6,
+      "discount": 0.30016313213703094,
+      "saving_eur": 7.36,
+      "evidence": 1.0,
+      "evidence_legs": [
+        "statutory_shelf"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "stockup_value"
+      ],
+      "reject_reason": null,
+      "fit_score": 90,
+      "rank_score": 17.26,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "food.rice",
+      "retailer": "Lidl",
+      "source": "llm_discover",
+      "name": "Ориз Жасмин",
+      "price_eur": 6.95,
+      "unit_price_eur": 1.39,
+      "reference_eur": 1.53,
+      "reference_level": "category_p25",
+      "reference_confidence": "low",
+      "reference_price_eur": 8.3,
+      "discount": 0.09150326797385633,
+      "saving_eur": 1.4,
+      "evidence": 1.0,
+      "evidence_legs": [
+        "statutory_shelf"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "discount",
+        "stockup_value",
+        "low_confidence_reference"
+      ],
+      "reject_reason": null,
+      "fit_score": 82,
+      "rank_score": -9.78,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "food.pork_meat",
+      "retailer": "Kaufland Bulgaria",
+      "source": "llm_discover",
+      "name": "Свинско каре без кост",
+      "price_eur": 3.39,
+      "unit_price_eur": 3.39,
+      "reference_eur": 3.47,
+      "reference_level": "category_p25",
+      "reference_confidence": "low",
+      "reference_price_eur": 5.85,
+      "discount": 0.023054755043227737,
+      "saving_eur": 0.32,
+      "evidence": 1.0,
+      "evidence_legs": [
+        "statutory_shelf"
+      ],
+      "verdict": "Skip",
+      "failed_gates": [
+        "discount",
+        "near_floor",
+        "stockup_value",
+        "low_confidence_reference"
+      ],
+      "reject_reason": null,
+      "fit_score": 86,
+      "rank_score": 1.25,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "supp.whey_protein",
+      "retailer": "silabg",
+      "source": "llm_discover",
+      "name": "BIOTECH USA 100% Pure Whey",
+      "price_eur": 79.76,
+      "unit_price_eur": 26.5867,
+      "reference_eur": 98.0,
+      "reference_level": "llm_reference",
+      "reference_confidence": "low",
+      "reference_price_eur": 98.0,
+      "discount": 0.7287071428571428,
+      "saving_eur": 357.07,
+      "evidence": 0,
+      "evidence_legs": [],
+      "verdict": "Fair",
+      "failed_gates": [
+        "evidence",
+        "low_confidence_reference"
+      ],
+      "reject_reason": null,
+      "fit_score": 85,
+      "rank_score": 80.0,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-03",
+      "sku": "food.salmon_fillet",
+      "retailer": "Metro",
+      "source": "llm_discover",
+      "name": "Сьомга филе с кожа прясна",
+      "price_eur": 12.9,
+      "unit_price_eur": 12.9,
+      "reference_eur": 9.9474,
+      "reference_level": null,
+      "reference_confidence": null,
+      "reference_price_eur": null,
+      "discount": null,
+      "saving_eur": null,
+      "evidence": null,
+      "evidence_legs": null,
+      "verdict": null,
+      "failed_gates": null,
+      "reject_reason": "over_reference",
+      "fit_score": null,
+      "rank_score": null,
+      "emailed": false
     }
   ]
 }

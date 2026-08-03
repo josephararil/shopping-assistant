@@ -98,6 +98,24 @@
           "retailer": "Lidl",
           "product_code": "0001485",
           "name": "Тоалетна хартия 8бр"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.3825,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001485",
+          "name": "Тоалетна хартия 8бр"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.3825,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "6800975",
+          "name": "Тоалетна хартия 8бр,аромат.праскова"
         }
       ],
       "stats": {
@@ -109,9 +127,9 @@
           "last": 0.2995
         },
         "regular": {
-          "n": 4,
+          "n": 6,
           "median": 0.3825,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -230,6 +248,15 @@
           "qty": 1.0,
           "unit_price_eur": 1.39,
           "name": "Ориз среднозърнест 5% начупеност"
+        },
+        {
+          "d": "2026-08-03",
+          "retailer": "Lidl",
+          "source": "llm_discover",
+          "price_eur": 6.95,
+          "qty": 5.0,
+          "unit_price_eur": 1.39,
+          "name": "Ориз Жасмин"
         }
       ],
       "regular": [
@@ -412,20 +439,110 @@
           "retailer": "Lidl",
           "product_code": "0001946",
           "name": "Ориз среднозърнест 5% начупеност"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.38,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207630",
+          "name": "Ориз Ризон"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.5,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7202477",
+          "name": "Krina Ориз Ризон"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.5,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7202476",
+          "name": "Krina Ориз Перлен"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.66,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001946",
+          "name": "Ориз среднозърнест 5% начупеност"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.29,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0039930",
+          "name": "Дългозърнест ориз Арборио"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.49,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0223302",
+          "name": "Ориз Басмати дългозърнест 1 kg"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.99,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0136419",
+          "name": "Ориз Басмати 1 kg"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.53,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7209348",
+          "name": "Krina Български ориз, 1кг-плик"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.97,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001780",
+          "name": "Бял среднозърнест ориз 100% начупен"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.53,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7200263",
+          "name": "Среднозърнест ориз, 7% начуп."
         }
       ],
       "stats": {
         "promo": {
-          "n": 6,
+          "n": 7,
           "min": 1.39,
           "p10": 1.39,
           "median": 2.09,
-          "last": 2.09
+          "last": 1.39
         },
         "regular": {
-          "n": 20,
+          "n": 30,
           "median": 1.66,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -461,6 +578,15 @@
           "retailer": "Lidl",
           "product_code": "7205873",
           "name": "Яйца 10 бр. L от под отгл селен"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 0.301,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205873",
+          "name": "Яйца 10 бр. L от под отгл селен"
         }
       ],
       "stats": {
@@ -472,9 +598,9 @@
           "last": 0.239
         },
         "regular": {
-          "n": 2,
+          "n": 3,
           "median": 0.301,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -526,6 +652,15 @@
           "qty": 1.0,
           "unit_price_eur": 2.99,
           "name": "Свински бут без кост"
+        },
+        {
+          "d": "2026-08-03",
+          "retailer": "Kaufland Bulgaria",
+          "source": "llm_discover",
+          "price_eur": 3.39,
+          "qty": 1.0,
+          "unit_price_eur": 3.39,
+          "name": "Свинско каре без кост"
         }
       ],
       "regular": [
@@ -582,20 +717,47 @@
           "retailer": "Lidl",
           "product_code": "0132526",
           "name": "Свинско филе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.87,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206823",
+          "name": "Свинско месо за готвене, ок.750г-ат"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.2,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207177",
+          "name": "Печено свинско филе Clean Label1+1"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.47,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0132526",
+          "name": "Свинско филе"
         }
       ],
       "stats": {
         "promo": {
-          "n": 5,
+          "n": 6,
           "min": 2.99,
           "p10": 2.99,
           "median": 3.39,
-          "last": 2.99
+          "last": 3.39
         },
         "regular": {
-          "n": 6,
+          "n": 9,
           "median": 5.87,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -661,6 +823,15 @@
           "retailer": "Lidl",
           "product_code": "0029247",
           "name": "Белени домати 5 Brix (OHT 240 г)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.15,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0029247",
+          "name": "Белени домати 5 Brix (OHT 240 г)"
         }
       ],
       "stats": {
@@ -672,9 +843,9 @@
           "last": 1.25
         },
         "regular": {
-          "n": 2,
+          "n": 3,
           "median": 2.15,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -1272,6 +1443,249 @@
           "retailer": "Lidl",
           "product_code": "0001182",
           "name": "Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 12.775,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001879",
+          "name": "Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.325,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205609",
+          "name": "Кашкавал от краве мляко БДС 400g"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.6857,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0074135",
+          "name": "Краве кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.22,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207018",
+          "name": "Български кашкавал от кр. мляко БДС"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.4932,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0141090",
+          "name": "Пушен кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.5,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206394",
+          "name": "Lacrima Кашкавал от краве мляко БДC"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 12.775,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7204360",
+          "name": "Саяна кашкавал от краве мляко БДС"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 17.45,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7201321",
+          "name": "Vereya Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 18.8158,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206941",
+          "name": "Madzharov Кашкавал Витоша БДС"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 12.26,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7204776",
+          "name": "Пресен кашкавал Гюбек"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.2167,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207559",
+          "name": "Кашкавал от кр.мляко BDS XXL"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 6.8133,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7209108",
+          "name": "Polinna Kaшкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 13.28,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7208469",
+          "name": "Пресен кашкавал Гюбек с манатарки"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.2133,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0069886",
+          "name": "Кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 16.6,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7204383",
+          "name": "Кашкавал от кр. мляко, собств.ферма"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.5,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7208392",
+          "name": "LB Bulgaricum Kашкавал от кр.мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 7.65,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206867",
+          "name": "Bulgarche Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 7.6625,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7208124",
+          "name": "Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 7.1333,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0002287",
+          "name": "Кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.29,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207563",
+          "name": "Пресен кашкавал Гюбек SK1"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.932,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0227544",
+          "name": "Кроасан с шунка и кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 13.28,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207185",
+          "name": "Пресен кашкавал Гюбек с поръска сор"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.75,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001182",
+          "name": "Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.8125,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206878",
+          "name": "Milki Dream Кашкавал"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.71,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207176",
+          "name": "Железница Кашкавал от краве мляко"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.4,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205450",
+          "name": "Пресен кашкавал Гюбек с трюфели"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.18,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001851",
+          "name": "Кашкавал от краве мляко"
         }
       ],
       "stats": {
@@ -1283,9 +1697,9 @@
           "last": 7.75
         },
         "regular": {
-          "n": 54,
+          "n": 81,
           "median": 11.5,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -1496,16 +1910,25 @@
           "qty": 1.0,
           "unit_price_eur": 22.5,
           "name": "BIOTECH USA Protein Power"
+        },
+        {
+          "d": "2026-08-03",
+          "retailer": "silabg",
+          "source": "llm_discover",
+          "price_eur": 79.76,
+          "qty": 3.0,
+          "unit_price_eur": 26.5867,
+          "name": "BIOTECH USA 100% Pure Whey"
         }
       ],
       "regular": [],
       "stats": {
         "promo": {
-          "n": 2,
+          "n": 3,
           "min": 22.5,
           "p10": 22.5,
           "median": 22.5,
-          "last": 22.5
+          "last": 26.5867
         },
         "regular": {
           "n": 0,
@@ -1564,6 +1987,15 @@
           "retailer": "Lidl",
           "product_code": "6205329",
           "name": "Шунка и гауда"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.0312,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "6205329",
+          "name": "Шунка и гауда"
         }
       ],
       "stats": {
@@ -1575,9 +2007,9 @@
           "last": 9.1286
         },
         "regular": {
-          "n": 2,
+          "n": 3,
           "median": 9.0312,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -1611,6 +2043,15 @@
           "qty": 1.0,
           "unit_price_eur": 2.49,
           "name": "Пилешки бутчета XXL ГРАДУС"
+        },
+        {
+          "d": "2026-08-03",
+          "retailer": "Metro",
+          "source": "llm_discover",
+          "price_eur": 4.29,
+          "qty": 1.0,
+          "unit_price_eur": 4.29,
+          "name": "Пилешко филе от гърди прясно"
         }
       ],
       "regular": [
@@ -1685,20 +2126,56 @@
           "retailer": "Lidl",
           "product_code": "7203837",
           "name": "Прясно пилешко филе XXL"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.69,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "6802425",
+          "name": "Пилешко филе от царевично пиле"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 6.64,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7203837",
+          "name": "Прясно пилешко филе XXL"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.57,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7208191",
+          "name": "ROSO Прясно пилешко филе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 6.13,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207869",
+          "name": "Прясно пилешко филе мариновано SK1"
         }
       ],
       "stats": {
         "promo": {
-          "n": 3,
+          "n": 4,
           "min": 2.49,
           "p10": 2.49,
-          "median": 4.2923,
-          "last": 2.49
+          "median": 4.29,
+          "last": 4.29
         },
         "regular": {
-          "n": 8,
+          "n": 12,
           "median": 6.64,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -1850,6 +2327,78 @@
           "retailer": "Lidl",
           "product_code": "7205907",
           "name": "Bulgarplod Лютеница едромляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 4.9038,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7203267",
+          "name": "Deroni Домашна едросмляна лютеница"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 4.3966,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001292",
+          "name": "Лютеница фино смляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.2456,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001297",
+          "name": "Лютеница едромляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 4.3684,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205063",
+          "name": "Seltse Лютеница едро смляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.7,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7206887",
+          "name": "Лютеница XXL, едросмляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.5517,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7203221",
+          "name": "Seltse Лютеница фино смляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 7.2545,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205594",
+          "name": "Лютеница едромляна"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.4364,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7205907",
+          "name": "Bulgarplod Лютеница едромляна"
         }
       ],
       "stats": {
@@ -1861,9 +2410,9 @@
           "last": null
         },
         "regular": {
-          "n": 16,
+          "n": 24,
           "median": 4.9038,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -1989,6 +2538,60 @@
           "retailer": "Lidl",
           "product_code": "7204365",
           "name": "Грах консервиран (ОНТ 440g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.913,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207729",
+          "name": "Млечен зелен грах (ОНТ 450g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.15,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0029072",
+          "name": "Градински грах (ОНТ 265g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.4,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0029408",
+          "name": "Грах фин, консерва 425мл (OHT 280g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.9412,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7204365",
+          "name": "Грах консервиран (ОНТ 440g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.8406,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "6415623",
+          "name": "Грах фин (ОНТ 425g)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 2.3971,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0195045",
+          "name": "Зелен грах екстра фин (ОНТ 445g)"
         }
       ],
       "stats": {
@@ -2000,9 +2603,9 @@
           "last": 8.045
         },
         "regular": {
-          "n": 12,
+          "n": 18,
           "median": 1.9412,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2018,6 +2621,15 @@
           "qty": 0.5,
           "unit_price_eur": 20.44,
           "name": "Coffee Jacobs Monarch Classic Ground"
+        },
+        {
+          "d": "2026-08-03",
+          "retailer": "Lidl",
+          "source": "lidl",
+          "price_eur": 2.95,
+          "qty": 0.25,
+          "unit_price_eur": 11.8,
+          "name": "Oro Мляно кафе"
         }
       ],
       "regular": [
@@ -2254,20 +2866,137 @@
           "retailer": "Lidl",
           "product_code": "7207719",
           "name": "Illy Classico Мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 29.64,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7201978",
+          "name": "Lavazza Crema e Gusto"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 12.24,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0178758",
+          "name": "Intenso Мляно кафе RFA"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 32.76,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207719",
+          "name": "Illy Classico Мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 37.6,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7201990",
+          "name": "Lavazza Qualita Oro Мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.32,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "1003745",
+          "name": "Melitta Мляно кафе Excellent"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 18.4,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0150278",
+          "name": "Мляно кафе SK3"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.96,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0140704",
+          "name": "Oro Мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.76,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0153488",
+          "name": "Кафе мляно SK1"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 27.56,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7209882",
+          "name": "Davidoff Espresso 57 мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 16.32,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0224606",
+          "name": "Мляно кафе еспресо Италиано 250 g"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 32.76,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7209852",
+          "name": "Illy Intenso мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 32.08,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7201979",
+          "name": "Lavazza Qualita Rossa Мляно кафе"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 27.16,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7209884",
+          "name": "Davidoff Fine Aroma мляно кафе"
         }
       ],
       "stats": {
         "promo": {
-          "n": 1,
-          "min": 20.44,
-          "p10": 20.44,
-          "median": 20.44,
-          "last": 20.44
+          "n": 2,
+          "min": 11.8,
+          "p10": 11.8,
+          "median": 11.8,
+          "last": 11.8
         },
         "regular": {
-          "n": 26,
+          "n": 39,
           "median": 27.16,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2293,6 +3022,15 @@
           "retailer": "Lidl",
           "product_code": "0096527",
           "name": "Мини виенски наденички"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.5625,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0096527",
+          "name": "Мини виенски наденички"
         }
       ],
       "stats": {
@@ -2304,9 +3042,9 @@
           "last": null
         },
         "regular": {
-          "n": 2,
+          "n": 3,
           "median": 9.5625,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2422,6 +3160,60 @@
           "retailer": "Lidl",
           "product_code": "0117821",
           "name": "Маслиново масло Екстра Върджин"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 10.0437,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0026466",
+          "name": "Маслиново масло екстра върджин"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.9693,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0011366",
+          "name": "Маслиново масло Extra virgin Испани"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 8.1878,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "6200505",
+          "name": "Гръцко маслиново масло"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.9145,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7201844",
+          "name": "Minerva Маслиново масло Помаче"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 11.6303,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0117821",
+          "name": "Маслиново масло Екстра Върджин"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 4.738,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "5717272",
+          "name": "Маслиново масло от маслиново кюспе"
         }
       ],
       "stats": {
@@ -2433,9 +3225,9 @@
           "last": null
         },
         "regular": {
-          "n": 12,
+          "n": 18,
           "median": 8.1878,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2516,6 +3308,33 @@
           "retailer": "Lidl",
           "product_code": "7207282",
           "name": "Извара"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.5636,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0002564",
+          "name": "Извара 4,2%"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 5.9273,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "5500741",
+          "name": "Извара 9,0%"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.88,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7207282",
+          "name": "Извара"
         }
       ],
       "stats": {
@@ -2527,9 +3346,9 @@
           "last": 3.18
         },
         "regular": {
-          "n": 6,
+          "n": 9,
           "median": 5.5636,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2583,6 +3402,24 @@
           "retailer": "Lidl",
           "product_code": "0032716",
           "name": "Червен боб кидни (ОНТ 255 г)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 3.4074,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7208919",
+          "name": "Krina Червен боб (ОНТ 400)"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 1.9756,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0032716",
+          "name": "Червен боб кидни (ОНТ 255 г)"
         }
       ],
       "stats": {
@@ -2594,16 +3431,26 @@
           "last": 1.3241
         },
         "regular": {
-          "n": 4,
+          "n": 6,
           "median": 1.9756,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
     "food.salmon_fillet": {
-      "unit": null,
-      "class": null,
-      "promo": [],
+      "unit": "kg",
+      "class": "consumable",
+      "promo": [
+        {
+          "d": "2026-08-03",
+          "retailer": "Metro",
+          "source": "llm_discover",
+          "price_eur": 12.9,
+          "qty": 1.0,
+          "unit_price_eur": 12.9,
+          "name": "Сьомга филе с кожа прясна"
+        }
+      ],
       "regular": [
         {
           "d": "2026-07-31",
@@ -2658,20 +3505,47 @@
           "retailer": "Lidl",
           "product_code": "7204478",
           "name": "Hipp Меню морк,карт и сьомга 4+м"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.9474,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "7204478",
+          "name": "Hipp Меню морк,карт и сьомга 4+м"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.33,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0157235",
+          "name": "Сьомга филе с кожа"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 15.33,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0183977",
+          "name": "Филе от сьомга"
         }
       ],
       "stats": {
         "promo": {
-          "n": 0,
-          "min": null,
-          "p10": null,
-          "median": null,
-          "last": null
+          "n": 1,
+          "min": 12.9,
+          "p10": 12.9,
+          "median": 12.9,
+          "last": 12.9
         },
         "regular": {
-          "n": 6,
+          "n": 9,
           "median": 15.33,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
@@ -2707,6 +3581,15 @@
           "retailer": "Lidl",
           "product_code": "0001075",
           "name": "Пушени пуешки гърди"
+        },
+        {
+          "d": "2026-08-03",
+          "source": "lidl_regular",
+          "unit_price_eur": 9.2,
+          "note": "",
+          "retailer": "Lidl",
+          "product_code": "0001075",
+          "name": "Пушени пуешки гърди"
         }
       ],
       "stats": {
@@ -2718,9 +3601,9 @@
           "last": 17.4375
         },
         "regular": {
-          "n": 2,
+          "n": 3,
           "median": 9.2,
-          "span_days": 2
+          "span_days": 3
         }
       }
     },
