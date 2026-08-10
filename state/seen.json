@@ -85,11 +85,11 @@
       "price": 0.239
     },
     "food.coffee_ground|50": {
-      "d": "2026-08-03",
-      "retailer": "Lidl",
-      "verdict": "Strong Buy",
+      "d": "2026-08-10",
+      "retailer": "Kaufland Bulgaria",
+      "verdict": "Fair",
       "ttl_days": 300,
-      "price": 11.8
+      "price": 11.98
     },
     "food.chicken_breast|29": {
       "d": "2026-08-03",
@@ -104,6 +104,27 @@
       "verdict": "Fair",
       "ttl_days": 300,
       "price": 26.5867
+    },
+    "supp.whey_protein|59": {
+      "d": "2026-08-10",
+      "retailer": "silabg",
+      "verdict": "Strong Buy",
+      "ttl_days": 300,
+      "price": 18.5
+    },
+    "food.eggs|-34": {
+      "d": "2026-08-10",
+      "retailer": "Kaufland Bulgaria",
+      "verdict": "Fair",
+      "ttl_days": 30,
+      "price": 0.199
+    },
+    "food.milk|-2": {
+      "d": "2026-08-10",
+      "retailer": "Metro",
+      "verdict": "Fair",
+      "ttl_days": 30,
+      "price": 0.92
     }
   },
   "weekly_count": {}

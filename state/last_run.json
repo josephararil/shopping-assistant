@@ -1,5 +1,5 @@
 {
-  "date": "2026-08-03",
+  "date": "2026-08-10",
   "reports": [
     {
       "source": "ccc",
@@ -16,31 +16,31 @@
     {
       "source": "lidl",
       "ok": true,
-      "n": 696,
+      "n": 697,
       "note": ""
     }
   ],
   "stage_counts": {
-    "harvested": 72,
-    "prefiltered_in": 72,
-    "prefiltered_out": 1,
-    "discovered": 5,
-    "audited": 5,
+    "harvested": 68,
+    "prefiltered_in": 68,
+    "prefiltered_out": 0,
+    "discovered": 11,
+    "audited": 7,
     "strong_buy": 1,
     "fair": 3,
-    "skip": 1,
+    "skip": 3,
     "emailed": 4
   },
   "rejects_by_reason": {
-    "no_sku_match": 65,
-    "no_price": 6
+    "no_sku_match": 57,
+    "no_price": 11
   },
   "failed_gates": {
-    "stockup_value": 3,
-    "discount": 2,
-    "low_confidence_reference": 3,
-    "near_floor": 1,
-    "evidence": 1
+    "stockup_value": 5,
+    "low_confidence_reference": 5,
+    "discount": 3,
+    "near_floor": 2,
+    "evidence": 2
   },
   "stale_skus": [],
   "model_fallbacks": []
