@@ -1884,6 +1884,35 @@
       "fit_score": null,
       "rank_score": null,
       "emailed": false
+    },
+    {
+      "d": "2026-08-17",
+      "sku": "food.rice",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Бял среднозърнест ориз 100% начупен",
+      "price_eur": 0.65,
+      "unit_price_eur": 0.65,
+      "reference_eur": 0.97,
+      "reference_level": "own_shelf",
+      "reference_confidence": "high",
+      "reference_price_eur": 0.97,
+      "discount": 0.3298969072164948,
+      "saving_eur": 3.2,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "own_shelf",
+        "retailer_claim"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "fit",
+        "stockup_value"
+      ],
+      "reject_reason": null,
+      "fit_score": 48,
+      "rank_score": 17.96,
+      "emailed": false
     }
   ]
 }

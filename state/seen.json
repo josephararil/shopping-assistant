@@ -125,6 +125,13 @@
       "verdict": "Fair",
       "ttl_days": 30,
       "price": 0.92
+    },
+    "food.rice|-9": {
+      "d": "2026-08-17",
+      "retailer": "Lidl",
+      "verdict": "Fair",
+      "ttl_days": 180,
+      "price": 0.65
     }
   },
   "weekly_count": {}
