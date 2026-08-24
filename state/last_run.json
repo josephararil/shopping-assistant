@@ -1,5 +1,5 @@
 {
-  "date": "2026-08-17",
+  "date": "2026-08-24",
   "reports": [
     {
       "source": "ccc",
@@ -16,30 +16,36 @@
     {
       "source": "lidl",
       "ok": true,
-      "n": 710,
+      "n": 731,
       "note": ""
     }
   ],
   "stage_counts": {
-    "harvested": 78,
-    "prefiltered_in": 78,
-    "prefiltered_out": 1,
+    "harvested": 86,
+    "prefiltered_in": 86,
+    "prefiltered_out": 2,
     "discovered": 0,
-    "audited": 1,
+    "audited": 2,
     "strong_buy": 0,
-    "fair": 1,
+    "fair": 2,
     "skip": 0,
-    "emailed": 1
+    "emailed": 2
   },
   "rejects_by_reason": {
-    "no_sku_match": 70,
+    "no_sku_match": 74,
     "no_price": 2,
-    "expired": 5
+    "expired": 8
   },
   "failed_gates": {
     "fit": 1,
-    "stockup_value": 1
+    "stockup_value": 2
   },
-  "stale_skus": [],
+  "stale_skus": [
+    "food.salmon_fillet",
+    "food.olive_oil",
+    "food.white_fish",
+    "food.honey",
+    "food.frozen_vegetables"
+  ],
   "model_fallbacks": []
 }

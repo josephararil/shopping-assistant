@@ -1913,6 +1913,63 @@
       "fit_score": 48,
       "rank_score": 17.96,
       "emailed": false
+    },
+    {
+      "d": "2026-08-24",
+      "sku": "food.sausages",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Мини виенски наденички",
+      "price_eur": 2.44,
+      "unit_price_eur": 9.76,
+      "reference_eur": 12.24,
+      "reference_level": "own_shelf",
+      "reference_confidence": "high",
+      "reference_price_eur": 3.06,
+      "discount": 0.20261437908496738,
+      "saving_eur": 9.92,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "own_shelf",
+        "retailer_claim"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "fit",
+        "stockup_value"
+      ],
+      "reject_reason": null,
+      "fit_score": 35,
+      "rank_score": 13.16,
+      "emailed": false
+    },
+    {
+      "d": "2026-08-24",
+      "sku": "food.kashkaval",
+      "retailer": "Lidl",
+      "source": "lidl",
+      "name": "Краве кашкавал",
+      "price_eur": 3.27,
+      "unit_price_eur": 8.175,
+      "reference_eur": 10.225,
+      "reference_level": "own_shelf",
+      "reference_confidence": "high",
+      "reference_price_eur": 4.09,
+      "discount": 0.20048899755501215,
+      "saving_eur": 4.1,
+      "evidence": 1.2,
+      "evidence_legs": [
+        "own_shelf",
+        "retailer_claim"
+      ],
+      "verdict": "Fair",
+      "failed_gates": [
+        "stockup_value"
+      ],
+      "reject_reason": null,
+      "fit_score": 75,
+      "rank_score": 10.65,
+      "emailed": false
     }
   ]
 }
