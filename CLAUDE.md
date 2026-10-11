@@ -1,6 +1,7 @@
 # CLAUDE.md — Shop Hunter
 
-A weekly Bulgarian shopping-deal finder. Runs on free GitHub Actions every Monday 06:00 UTC,
+A weekly Bulgarian shopping-deal finder. Was designed to run on free GitHub Actions every Monday 06:00 UTC
+(**the workflow was deleted; nothing runs in CI now** — restore `.github/workflows/weekly.yml` from git history to re-enable),
 emails only when something is genuinely worth buying, and commits its own state back to the repo.
 
 The user's hard requirement, verbatim, is the design brief:
@@ -675,12 +676,8 @@ python test_match.py && python test_prefilter.py && python test_history.py \
   && python test_stub.py
 ```
 
-They all run offline in under a second. `weekly.yml` runs them as a separate `tests` job that gates
-both the weekly pipeline (`needs: tests`) and every pull request, so a parser broken by a site
-layout change fails loudly instead of harvesting nothing and producing a digest that merely looks
-like a quiet week. The pipeline job itself is skipped on `pull_request` — it spends LLM tokens,
-emails the user and commits state, none of which a PR should do. **Add a new suite to that job's
-step list, or it never runs in CI.**
+They all run offline in under a second. There is no CI: the `weekly.yml` workflow (test gate + weekly
+pipeline) was deleted, so run the suites locally before merging.
 
 - `python find_deals.py --dry-run` — Stages 0–2 against the live web, exits before any LLM call.
 - `SHOP_HUNTER_DRY_RUN=1 python find_deals.py` — every stage, writes state, sends no email and
